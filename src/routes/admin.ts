@@ -1,15 +1,18 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import type { DedupMode, Env, PollInput, PollRow, QuestionType, ResultPolicy } from '../types';
-import { clampInt, esc, fmtDate, hmacHex, isClosed, jsonForScript, nowSec, parseOptionLines } from '../lib/util';
+import type { Env, PollRow } from '../types';
+import { esc, fmtDate, hmacHex, isClosed, jsonForScript, nowSec } from '../lib/util';
 import { layout, notFoundBody } from '../lib/html';
+import { t } from '../lib/i18n';
+import { parsePollInput } from '../lib/parse';
 import { runDailyRollup } from '../lib/cron';
 import {
   adminListPolls, buildResults, createPoll, deletePoll, exportPoll, getDailySeries, getPoll,
-  getPollPageviews, setPollStatus,
+  getPollPageviews, setPollAccent, setPollStatus, setPollVisibility,
 } from '../lib/db';
 import type { DailyPoint, ResultsPayload } from '../lib/db';
+import { localeOf, newPollFormBody } from './pages';
 
 export const admin = new Hono<{ Bindings: Env }>();
 
@@ -33,28 +36,24 @@ async function isAdmin(c: Context<{ Bindings: Env }>): Promise<boolean> {
 
 /* ---------- 登录 / 登出 ---------- */
 
-function loginForm(error: string): string {
-  return `<div class="vp-login">
-  <h1>管理后台</h1>
-  ${error ? `<p class="vp-error">${esc(error)}</p>` : ''}
-  <form method="post" action="/admin/login">
-    <div class="vp-field"><label>管理密钥</label><input type="password" name="password" autofocus autocomplete="current-password"></div>
-    <button class="vp-btn">登录</button>
-  </form>
-</div>`;
-}
-
 admin.get('/admin', async (c) => {
-  if (!(await isAdmin(c))) return c.html(layout({ title: '登录 · 众声 VoxPop', body: loginForm('') }));
+  const loc = localeOf(c);
+  if (!(await isAdmin(c))) {
+    return c.html(layout({ title: `${t(loc, 'adminTitle')} · 众声 VoxPop`, body: loginFormRaw(loc, ''), locale: loc, path: c.req.path }));
+  }
   const polls = await adminListPolls(c.env.DB);
-  return c.html(layout({ title: '管理后台 · 众声 VoxPop', body: dashboardHtml(polls) }));
+  return c.html(layout({ title: `${t(loc, 'adminTitle')} · 众声 VoxPop`, body: dashboardHtml(loc, polls), locale: loc, path: c.req.path }));
 });
 
 admin.post('/admin/login', async (c) => {
+  const loc = localeOf(c);
   const form = await c.req.parseBody();
   const password = String(form['password'] ?? '');
   if (!password || password !== c.env.ADMIN_KEY) {
-    return c.html(layout({ title: '登录 · 众声 VoxPop', body: loginForm('密钥不正确') }), 401);
+    return c.html(
+      layout({ title: `${t(loc, 'adminTitle')} · 众声 VoxPop`, body: loginFormRaw(loc, t(loc, 'wrongKey')), locale: loc, path: c.req.path }),
+      401
+    );
   }
   setCookie(c, 'vp_admin', await makeAdminToken(c.env.SERVER_SALT), {
     path: '/', maxAge: 7 * 86400, httpOnly: true, sameSite: 'Strict', secure: true,
@@ -70,77 +69,36 @@ admin.post('/admin/logout', (c) => {
 /* ---------- 新建问卷 ---------- */
 
 admin.get('/admin/new', async (c) => {
+  const loc = localeOf(c);
   if (!(await isAdmin(c))) return c.redirect('/admin');
-  return c.html(layout({ title: '新建问卷 · 众声 VoxPop', body: newPollForm() }));
+  const body = `
+  <div class="vp-admin-head">
+    <h1 class="vp-title">${esc(t(loc, 'createTitle'))}</h1>
+    <a class="vp-link" href="/admin">${esc(t(loc, 'backToList'))}</a>
+  </div>
+  ${newPollFormBody(loc, true)}
+  <script src="/assets/admin.js" defer></script>`;
+  return c.html(layout({
+    title: `${t(loc, 'createTitle')} · 众声 VoxPop`,
+    body, locale: loc, path: c.req.path, createEndpoint: '/api/admin/polls',
+  }));
 });
 
 admin.post('/api/admin/polls', async (c) => {
   if (!(await isAdmin(c))) return c.json({ error: 'unauthorized' }, 401);
   const raw = await c.req.json<Record<string, unknown>>().catch(() => null);
   if (!raw) return c.json({ error: 'bad_request' }, 400);
-  const parsed = parsePollInput(raw);
+  const parsed = parsePollInput(raw, { allowExtraKeys: true });
   if (parsed.error || !parsed.input) return c.json({ error: parsed.error ?? 'bad_request' }, 400);
   try {
     const id = await createPoll(c.env.DB, parsed.input);
     return c.json({ ok: true, id });
-  } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : '创建失败' }, 400);
+  } catch {
+    return c.json({ error: 'level_too_deep' }, 400);
   }
 });
 
-function parsePollInput(raw: Record<string, unknown>): { input?: PollInput; error?: string } {
-  const s = (v: unknown) => (typeof v === 'string' ? v : '');
-  const title = s(raw.title).trim();
-  if (!title || title.length > 80) return { error: '标题必填且不超过 80 字' };
-  const description = s(raw.description).trim().slice(0, 300);
-
-  const dedupMode = (['device', 'ip', 'open'] as const).includes(s(raw.dedupMode) as DedupMode)
-    ? (s(raw.dedupMode) as DedupMode) : 'device';
-  const resultPolicy = (['always', 'after_vote', 'after_close'] as const).includes(s(raw.resultPolicy) as ResultPolicy)
-    ? (s(raw.resultPolicy) as ResultPolicy) : 'after_vote';
-
-  const closeInDays = raw.closeInDays == null ? null : clampInt(raw.closeInDays, 1, 365, 0);
-  const closeAt = closeInDays && closeInDays > 0 ? nowSec() + closeInDays * 86400 : null;
-
-  const extraKeys = s(raw.extraKeys)
-    .split(/[,，\s]+/).filter(Boolean)
-    .filter((k) => /^[a-z0-9_]{1,32}$/.test(k))
-    .slice(0, 8).join(',');
-
-  const rawQuestions = Array.isArray(raw.questions) ? raw.questions : [];
-  if (rawQuestions.length === 0 || rawQuestions.length > 20) {
-    return { error: '问卷需要 1~20 道题' };
-  }
-  const questions: PollInput['questions'] = [];
-  for (const rq of rawQuestions) {
-    const q = (rq ?? {}) as Record<string, unknown>;
-    const type = s(q.type) as QuestionType;
-    if (!['single', 'multi', 'cascade', 'text'].includes(type)) return { error: '未知题型' };
-    const qTitle = s(q.title).trim();
-    if (!qTitle || qTitle.length > 120) return { error: '题目标题必填且不超过 120 字' };
-    const required = q.required !== false;
-    const maxChoices = type === 'multi' ? clampInt(q.maxChoices, 2, 50, 3) : 1;
-    const maxLen = type === 'text' ? clampInt(q.maxLen, 1, 500, 200) : 0;
-    let parsedOptions: { label: string; depth: number }[] = [];
-    if (type !== 'text') {
-      parsedOptions = parseOptionLines(s(q.optionsText));
-      if (parsedOptions.length < 2) return { error: `「${qTitle}」至少需要两个选项` };
-      if (parsedOptions.length > 200) return { error: `「${qTitle}」选项过多` };
-      if (type !== 'cascade' && parsedOptions.some((o) => o.depth > 0)) {
-        return { error: `「${qTitle}」只有级联题支持缩进子选项` };
-      }
-    }
-    questions.push({ type, title: qTitle, required, maxChoices, maxLen, parsedOptions });
-  }
-  return { input: { title, description, dedupMode, resultPolicy, closeAt, extraKeys, questions } };
-}
-
-/* ---------- 状态操作 / 删除 / 导出 ---------- */
-
-const adminGuard = async (c: Context<{ Bindings: Env }>): Promise<Response | null> => {
-  if (await isAdmin(c)) return null;
-  return c.json({ error: 'unauthorized' }, 401);
-};
+/* ---------- 状态 / 删除 / 导出 / Cron ---------- */
 
 admin.post('/admin/polls/:id/open', async (c) => {
   if (await adminGuard(c)) return c.redirect('/admin');
@@ -158,6 +116,30 @@ admin.post('/admin/polls/:id/delete', async (c) => {
   if (await adminGuard(c)) return c.redirect('/admin');
   await deletePoll(c.env.DB, c.req.param('id'));
   return c.redirect('/admin');
+});
+
+admin.post('/admin/polls/:id/list', async (c) => {
+  if (await adminGuard(c)) return c.redirect('/admin');
+  await setPollVisibility(c.env.DB, c.req.param('id'), 'listed');
+  return c.redirect('/admin');
+});
+
+admin.post('/admin/polls/:id/unlist', async (c) => {
+  if (await adminGuard(c)) return c.redirect('/admin');
+  await setPollVisibility(c.env.DB, c.req.param('id'), 'unlisted');
+  return c.redirect('/admin');
+});
+
+admin.post('/admin/polls/:id/accent', async (c) => {
+  if (await adminGuard(c)) return c.redirect('/admin');
+  const form = await c.req.parseBody();
+  const accent = String(form['accent'] ?? '').replace('#', '');
+  if (/^[0-9a-fA-F]{6}$/i.test(accent)) {
+    await setPollAccent(c.env.DB, c.req.param('id'), '#' + accent.toLowerCase());
+  } else if (accent === '') {
+    await setPollAccent(c.env.DB, c.req.param('id'), '');
+  }
+  return c.redirect(`/admin/p/${c.req.param('id')}`);
 });
 
 admin.get('/admin/polls/:id/export', async (c) => {
@@ -179,12 +161,18 @@ admin.post('/admin/cron/run', async (c) => {
   return c.json({ ok: true, ...r });
 });
 
+async function adminGuard(c: Context<{ Bindings: Env }>): Promise<Response | null> {
+  if (await isAdmin(c)) return null;
+  return c.json({ error: 'unauthorized' }, 401);
+}
+
 /* ---------- 结果详情 ---------- */
 
 admin.get('/admin/p/:id', async (c) => {
+  const loc = localeOf(c);
   if (!(await isAdmin(c))) return c.redirect('/admin');
   const poll = await getPoll(c.env.DB, c.req.param('id'));
-  if (!poll) return c.html(layout({ title: '404 · 众声 VoxPop', body: notFoundBody() }), 404);
+  if (!poll) return c.html(layout({ title: '404 · 众声 VoxPop', body: notFoundBody(loc), locale: loc, path: c.req.path }), 404);
   const results = await buildResults(c.env.DB, poll, true);
   const [trend, pv] = await Promise.all([
     getDailySeries(c.env.DB, poll.id),
@@ -192,21 +180,32 @@ admin.get('/admin/p/:id', async (c) => {
   ]);
   const origin = new URL(c.req.url).origin;
   return c.html(layout({
-    title: `结果 · ${poll.title} · 众声 VoxPop`,
-    body: detailHtml(poll, results, origin, trend, pv),
+    title: `${t(loc, 'resultsTitle', { n: results.total, m: pv })} · 众声 VoxPop`,
+    body: detailHtml(loc, poll, results, origin, trend, pv),
+    locale: loc,
+    path: c.req.path,
+    accent: poll.accent,
     head: '<script src="https://cdn.jsdelivr.net/npm/chart.js@4" defer></script><script src="/assets/admin-results.js" defer></script>',
   }));
 });
 
 interface OptNode { id: string; label: string; count: number; children: OptNode[] }
 
-function typeLabel(t: string): string {
-  return { single: '单选', multi: '多选', cascade: '级联', text: '文本' }[t] ?? t;
+function typeLabel(loc: Parameters<typeof t>[0], type: string): string {
+  const map: Record<string, string> = { single: 'typeSingle', multi: 'typeMulti', cascade: 'typeCascade', text: 'typeText' };
+  return t(loc, map[type] ?? type);
 }
 
-function detailHtml(poll: PollRow, results: ResultsPayload, origin: string, trend: DailyPoint[], pv: number): string {
+function detailHtml(
+  loc: Parameters<typeof t>[0],
+  poll: PollRow,
+  results: ResultsPayload,
+  origin: string,
+  trend: DailyPoint[],
+  pv: number
+): string {
   const closed = isClosed(poll);
-  const badge = poll.status === 'closed' ? '已截止' : closed ? '已到期' : '进行中';
+  const badge = poll.status === 'closed' ? t(loc, 'statusClosed') : closed ? t(loc, 'statusExpired') : t(loc, 'statusOpen');
   const link = `${origin}/p/${poll.id}`;
   const embedCode = `<script src="${origin}/embed.js"></script>\n<div class="voxpop-poll" data-poll="${poll.id}"></div>`;
 
@@ -216,11 +215,11 @@ function detailHtml(poll: PollRow, results: ResultsPayload, origin: string, tren
       id: string; type: string; title: string; required: boolean;
       answerCount?: number; texts?: unknown; options?: OptNode[];
     };
-    qs += `<section class="vp-admin-q"><h3>${esc(q.title)} <small class="vp-chip">${typeLabel(q.type)}${q.required ? '' : ' · 选填'}</small></h3>`;
+    qs += `<section class="vp-admin-q"><h3>${esc(q.title)} <small class="vp-chip">${esc(typeLabel(loc, q.type))}${q.required ? '' : esc(t(loc, 'optionalPostfix'))}</small></h3>`;
     if (q.type === 'text') {
-      qs += `<p class="vp-muted">${q.answerCount ?? 0} 条补充说明</p><ul class="vp-texts">`;
-      for (const t of (q.texts ?? []) as { text: string; ts: number }[]) {
-        qs += `<li>${esc(t.text)} <small>${fmtDate(t.ts)}</small></li>`;
+      qs += `<p class="vp-muted">${esc(t(loc, 'supplementCount', { n: q.answerCount ?? 0 }))}</p><ul class="vp-texts">`;
+      for (const txt of (q.texts ?? []) as { text: string; ts: number }[]) {
+        qs += `<li>${esc(txt.text)} <small>${fmtDate(txt.ts)}</small></li>`;
       }
       qs += '</ul>';
     } else {
@@ -241,108 +240,106 @@ function detailHtml(poll: PollRow, results: ResultsPayload, origin: string, tren
     qs += '</section>';
   }
 
-  const bdPairs = [['device', '设备'], ['browser', '浏览器'], ['os', '系统'], ['country', '国家/地区']] as const;
+  const bdPairs = [['device', 'device'], ['browser', 'browser'], ['os', 'os'], ['country', 'country']] as const;
   let bd = '';
-  for (const [key, label] of bdPairs) {
+  for (const [key, labelKey] of bdPairs) {
     const entries = Object.entries(results.breakdown[key] ?? {});
     if (entries.length === 0) continue;
-    bd += `<div class="vp-bd"><h4>${label}</h4>${entries
-      .map(([k, v]) => `<span class="vp-chip">${esc(k)} · ${v}</span>`)
+    bd += `<div class="vp-bd"><h4>${esc(t(loc, labelKey))}</h4>${entries
+      .map(([k, v]) => `<span class="vp-chip">${esc(k || t(loc, 'unknown'))} · ${v}</span>`)
       .join('')}</div>`;
   }
 
-  const hasChartData = results.total > 0 || trend.some((t) => t.responses > 0 || t.pageviews > 0);
+  const hasChartData = results.total > 0 || trend.some((x) => x.responses > 0 || x.pageviews > 0);
   const charts = hasChartData ? `
-  <h2>趋势与构成</h2>
+  <h2 class="vp-section">${esc(t(loc, 'trendTitle'))}</h2>
   <div class="vp-chart-wide"><canvas id="vp-trend" height="110"></canvas></div>
+  <h2 class="vp-section">${esc(t(loc, 'composition'))}</h2>
   <div class="vp-charts">
-    <div class="vp-chart-box"><h4>设备</h4><canvas id="vp-ch-device"></canvas></div>
-    <div class="vp-chart-box"><h4>浏览器</h4><canvas id="vp-ch-browser"></canvas></div>
-    <div class="vp-chart-box"><h4>系统</h4><canvas id="vp-ch-os"></canvas></div>
-    <div class="vp-chart-box"><h4>国家/地区</h4><canvas id="vp-ch-country"></canvas></div>
+    <div class="vp-chart-box"><h4>${esc(t(loc, 'device'))}</h4><canvas id="vp-ch-device"></canvas></div>
+    <div class="vp-chart-box"><h4>${esc(t(loc, 'browser'))}</h4><canvas id="vp-ch-browser"></canvas></div>
+    <div class="vp-chart-box"><h4>${esc(t(loc, 'os'))}</h4><canvas id="vp-ch-os"></canvas></div>
+    <div class="vp-chart-box"><h4>${esc(t(loc, 'country'))}</h4><canvas id="vp-ch-country"></canvas></div>
   </div>
   <script type="application/json" id="vp-chart-data">${jsonForScript({ trend, breakdown: results.breakdown })}</script>` : '';
 
+  const visibilityForm = poll.visibility === 'listed'
+    ? `<form method="post" action="/admin/polls/${poll.id}/unlist" class="inline"><button class="vp-btn ghost small">${esc(t(loc, 'listOff'))}</button></form>`
+    : `<form method="post" action="/admin/polls/${poll.id}/list" class="inline"><button class="vp-btn ghost small">${esc(t(loc, 'listOn'))}</button></form>`;
+
   return `
   <div class="vp-admin-head">
-    <h1>${esc(poll.title)}</h1>
-    <span class="vp-badge ${closed ? 'off' : 'on'}">${badge}</span>
+    <h1 class="vp-title">${esc(poll.title)}</h1>
+    <span class="vp-badge ${closed ? 'off' : 'on'}">${esc(badge)}</span>
   </div>
-  <p class="vp-meta">ID <code>${poll.id}</code> · 创建于 ${fmtDate(poll.created_at)}${poll.close_at ? ` · ${fmtDate(poll.close_at)} 截止` : ''}${poll.extra_keys ? ` · 自定义维度：${esc(poll.extra_keys)}` : ''}</p>
+  <p class="vp-meta">ID <code>${poll.id}</code> · ${esc(t(loc, 'thCreated'))} ${fmtDate(poll.created_at)}${poll.close_at ? ` · ${esc(t(loc, 'closingOn', { date: fmtDate(poll.close_at) }))}` : ''} · ${esc(t(loc, poll.visibility === 'listed' ? 'listedBadge' : 'unlistedBadge'))}${poll.extra_keys ? ` · ${esc(poll.extra_keys)}` : ''}</p>
   <div class="vp-admin-actions">
-    <a class="vp-btn ghost" href="/p/${poll.id}" target="_blank" rel="noopener">打开公开页</a>
-    <a class="vp-btn ghost" href="/admin/polls/${poll.id}/export">导出 JSON</a>
-    <form method="post" action="/admin/polls/${poll.id}/${poll.status === 'open' ? 'close' : 'open'}" class="inline"><button class="vp-btn ghost">${poll.status === 'open' ? '截止' : '重新开启'}</button></form>
-    <form method="post" action="/admin/polls/${poll.id}/delete" class="inline" onsubmit="return confirm('确定删除该问卷及其全部数据？不可恢复')"><button class="vp-btn danger">删除</button></form>
+    <a class="vp-btn ghost" href="/p/${poll.id}" target="_blank" rel="noopener">${esc(t(loc, 'viewPage'))}</a>
+    <a class="vp-btn ghost" href="/admin/polls/${poll.id}/export">${esc(t(loc, 'exportJson'))}</a>
+    <form method="post" action="/admin/polls/${poll.id}/${poll.status === 'open' ? 'close' : 'open'}" class="inline"><button class="vp-btn ghost">${esc(t(loc, poll.status === 'open' ? 'close' : 'reopen'))}</button></form>
+    ${visibilityForm}
+    <form method="post" action="/admin/polls/${poll.id}/delete" class="inline" onsubmit="return confirm('${esc(t(loc, 'confirmDelete'))}')"><button class="vp-btn danger">${esc(t(loc, 'delete'))}</button></form>
   </div>
-  <div class="vp-field"><label>公开链接</label><input readonly value="${esc(link)}" onclick="this.select()"></div>
-  <div class="vp-field"><label>嵌入代码</label><textarea readonly rows="3" onclick="this.select()">${esc(embedCode)}</textarea></div>
-  <h2>结果（${results.total} 份答卷 · ${pv} 次浏览）</h2>
-  ${qs || '<p class="vp-muted">还没有答卷</p>'}
-  <h2>答卷构成</h2>
-  ${bd || '<p class="vp-muted">暂无数据</p>'}
+  <div class="vp-field-row">
+    <div class="vp-field" style="flex:2 1 260px"><label>${esc(t(loc, 'publicLink'))}</label><input readonly value="${esc(link)}" onclick="this.select()"></div>
+    <div class="vp-field"><label>${esc(t(loc, 'accentLabel'))}</label>
+      <form method="post" action="/admin/polls/${poll.id}/accent" class="inline vp-accent-form">
+        <input type="color" name="accent" value="${esc(poll.accent || '#f8c91c')}">
+        <button class="vp-btn ghost small">${esc(t(loc, 'setAccent'))}</button>
+      </form>
+    </div>
+  </div>
+  <div class="vp-field"><label>${esc(t(loc, 'embedCode'))}</label><textarea readonly rows="3" onclick="this.select()">${esc(embedCode)}</textarea></div>
+  <h2 class="vp-section">${esc(t(loc, 'resultsTitle', { n: results.total, m: pv }))}</h2>
+  ${qs || `<p class="vp-muted">${esc(t(loc, 'noResponses'))}</p>`}
+  <h2 class="vp-section">${esc(t(loc, 'composition'))}</h2>
+  ${bd || `<p class="vp-muted">${esc(t(loc, 'noData'))}</p>`}
   ${charts}
-  <p class="vp-muted" style="margin-top:24px"><a href="/admin">← 返回列表</a></p>`;
+  <p class="vp-muted" style="margin-top:24px"><a href="/admin">← ${esc(t(loc, 'backToList'))}</a></p>`;
 }
 
-function dashboardHtml(polls: (PollRow & { response_count: number })[]): string {
+function dashboardHtml(loc: Parameters<typeof t>[0], polls: (PollRow & { response_count: number })[]): string {
   const rows = polls.map((p) => {
     const closed = isClosed(p);
-    const badge = p.status === 'closed' ? '已截止' : closed ? '已到期' : '进行中';
+    const badge = p.status === 'closed' ? t(loc, 'statusClosed') : closed ? t(loc, 'statusExpired') : t(loc, 'statusOpen');
     const action = p.status === 'open' ? 'close' : 'open';
-    const actionLabel = p.status === 'open' ? '截止' : '开启';
+    const actionLabel = p.status === 'open' ? t(loc, 'close') : t(loc, 'reopen');
+    const visLabel = t(loc, p.visibility === 'listed' ? 'listedBadge' : 'unlistedBadge');
+    const visAction = p.visibility === 'listed' ? 'unlist' : 'list';
+    const visActionLabel = p.visibility === 'listed' ? t(loc, 'listOff') : t(loc, 'listOn');
     return `<tr>
     <td><a href="/admin/p/${p.id}">${esc(p.title)}</a></td>
     <td><code>${p.id}</code></td>
-    <td><span class="vp-badge ${closed ? 'off' : 'on'}">${badge}</span></td>
+    <td><span class="vp-badge ${closed ? 'off' : 'on'}">${esc(badge)}</span> <span class="vp-badge ${p.visibility === 'listed' ? 'on' : 'off'}">${esc(visLabel)}</span></td>
     <td>${p.response_count}</td>
     <td>${fmtDate(p.created_at)}</td>
     <td class="vp-actions">
-      <form method="post" action="/admin/polls/${p.id}/${action}" class="inline"><button class="vp-btn ghost small">${actionLabel}</button></form>
-      <form method="post" action="/admin/polls/${p.id}/delete" class="inline" onsubmit="return confirm('确定删除？不可恢复')"><button class="vp-btn danger small">删除</button></form>
+      <form method="post" action="/admin/polls/${p.id}/${action}" class="inline"><button class="vp-btn ghost small">${esc(actionLabel)}</button></form>
+      <form method="post" action="/admin/polls/${p.id}/${visAction}" class="inline"><button class="vp-btn ghost small">${esc(visActionLabel)}</button></form>
+      <form method="post" action="/admin/polls/${p.id}/delete" class="inline" onsubmit="return confirm('${esc(t(loc, 'confirmDelete'))}')"><button class="vp-btn danger small">${esc(t(loc, 'delete'))}</button></form>
     </td>
   </tr>`;
   }).join('');
   return `
   <div class="vp-admin-head">
-    <h1>管理后台</h1>
+    <h1 class="vp-title">${esc(t(loc, 'adminTitle'))}</h1>
     <div>
-      <a class="vp-btn" href="/admin/new">+ 新建问卷</a>
-      <form method="post" action="/admin/logout" class="inline"><button class="vp-btn ghost">退出登录</button></form>
+      <a class="vp-btn" href="/admin/new">${esc(t(loc, 'newPoll'))}</a>
+      <form method="post" action="/admin/logout" class="inline"><button class="vp-btn ghost">${esc(t(loc, 'logout'))}</button></form>
     </div>
   </div>
   ${polls.length
-    ? `<table class="vp-table"><thead><tr><th>标题</th><th>ID</th><th>状态</th><th>答卷</th><th>创建时间</th><th>操作</th></tr></thead><tbody>${rows}</tbody></table>`
-    : '<p class="vp-empty">还没有问卷，点右上角新建</p>'}`;
+    ? `<div class="vp-table-wrap"><table class="vp-table"><thead><tr><th>${esc(t(loc, 'thTitle'))}</th><th>ID</th><th>${esc(t(loc, 'thStatus'))}</th><th>${esc(t(loc, 'thResponses'))}</th><th>${esc(t(loc, 'thCreated'))}</th><th>${esc(t(loc, 'thActions'))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : `<p class="vp-empty">${esc(t(loc, 'noPolls'))}</p>`}`;
 }
 
-function newPollForm(): string {
-  return `
-  <div class="vp-admin-head">
-    <h1>新建问卷</h1>
-    <a class="vp-link" href="/admin">← 返回列表</a>
-  </div>
-  <div class="vp-field"><label>标题（必填）</label><input id="f-title" maxlength="80" placeholder="例如：BeeCount 下个版本你最想要什么功能？"></div>
-  <div class="vp-field"><label>说明（选填）</label><input id="f-desc" maxlength="300"></div>
-  <div class="vp-field-row">
-    <div class="vp-field"><label>防重策略</label>
-      <select id="f-dedup">
-        <option value="device">每设备一份（推荐）</option>
-        <option value="ip">每 IP 一份（严格）</option>
-        <option value="open">宽松（仅前端提示）</option>
-      </select></div>
-    <div class="vp-field"><label>结果可见</label>
-      <select id="f-policy">
-        <option value="after_vote">提交后可见</option>
-        <option value="always">实时可见</option>
-        <option value="after_close">截止后可见</option>
-      </select></div>
-    <div class="vp-field"><label>几天后截止（留空不限）</label><input id="f-close-days" type="number" min="1" max="365"></div>
-  </div>
-  <div class="vp-field"><label>自定义维度键（App / 官网链接可透传的参数名，逗号分隔）</label><input id="f-extra-keys" maxlength="200" placeholder="src,app_ver,platform"></div>
-  <h2>题目</h2>
-  <div id="vp-questions"></div>
-  <button type="button" id="vp-add-question" class="vp-btn ghost">+ 添加题目</button>
-  <div class="vp-actions-bar"><button type="button" id="vp-create" class="vp-btn">创建问卷</button></div>
-  <script src="/assets/admin.js" defer></script>`;
+function loginFormRaw(loc: Parameters<typeof t>[0], error: string): string {
+  return `<div class="vp-login">
+  <h1>${esc(t(loc, 'adminTitle'))}</h1>
+  ${error ? `<p class="vp-error">${esc(error)}</p>` : ''}
+  <form method="post" action="/admin/login">
+    <div class="vp-field"><label>${esc(t(loc, 'adminKeyLabel'))}</label><input type="password" name="password" autofocus autocomplete="current-password"></div>
+    <button class="vp-btn">${esc(t(loc, 'loginBtn'))}</button>
+  </form>
+</div>`;
 }

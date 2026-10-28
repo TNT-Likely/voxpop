@@ -1,6 +1,13 @@
-/* 众声 VoxPop 前端脚本：页面埋点 + 投票交互 + 结果渲染 + 嵌入自适应（原生 JS，无依赖） */
+/* 众声 VoxPop 前端脚本：埋点 + 投票交互 + 结果渲染 + 分享海报 + 主题切换（原生 JS，无依赖） */
 (function () {
   'use strict';
+
+  var L = window.VP_L || {};
+  function T(key, vars) {
+    var s = L[key] || key;
+    if (vars) for (var k in vars) s = s.split('{' + k + '}').join(String(vars[k]));
+    return s;
+  }
 
   /* ---------- 工具 ---------- */
   function readCookie(name) {
@@ -19,6 +26,44 @@
     if (cls) n.className = cls;
     if (text != null) n.textContent = text;
     return n;
+  }
+  function cssVar(name, fallback) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  /* ---------- 主题切换（自动 → 日间 → 暗黑） ---------- */
+  function initThemeToggle() {
+    var btn = document.getElementById('vp-theme-toggle');
+    if (!btn) return;
+    var order = ['auto', 'light', 'dark'];
+    function stored() {
+      try { return localStorage.getItem('vp_theme') || 'auto'; } catch (e) { return 'auto'; }
+    }
+    function icon(t) { return t === 'light' ? '☀' : t === 'dark' ? '☾' : '◐'; }
+    function label(t) { return T(t === 'light' ? 'themeLight' : t === 'dark' ? 'themeDark' : 'themeAuto'); }
+    function apply() {
+      var t = stored();
+      var eff = t;
+      if (t === 'auto') eff = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      document.documentElement.dataset.theme = eff;
+      btn.textContent = icon(t);
+      btn.title = label(t);
+      btn.setAttribute('aria-label', label(t));
+    }
+    btn.addEventListener('click', function () {
+      var next = order[(order.indexOf(stored()) + 1) % order.length];
+      try { localStorage.setItem('vp_theme', next); } catch (e) { /* ignore */ }
+      apply();
+    });
+    if (window.matchMedia) {
+      try {
+        matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+          if (stored() === 'auto') apply();
+        });
+      } catch (e) { /* 旧浏览器忽略 */ }
+    }
+    apply();
   }
 
   /* ---------- 设备/浏览器识别（客户端枚举化，服务端仅收白名单字段） ---------- */
@@ -100,7 +145,7 @@
     var box = el('section', 'vp-q');
     box.appendChild(el('h3', null, q.title));
     if (q.type === 'text') {
-      box.appendChild(el('p', 'vp-muted', q.answerCount + ' 条补充说明'));
+      box.appendChild(el('p', 'vp-muted', T('supplementCount', { n: q.answerCount })));
       return box;
     }
     var flat = flattenOptions(q.options, 0, []);
@@ -124,17 +169,17 @@
 
   function renderBreakdown(bd) {
     var wrap = el('section', null);
-    wrap.appendChild(el('h3', null, '答卷构成'));
-    [['device', '设备'], ['browser', '浏览器'], ['os', '系统'], ['country', '国家/地区']].forEach(function (pair) {
+    wrap.appendChild(el('h3', 'vp-section-h', T('composition')));
+    [['device', 'device'], ['browser', 'browser'], ['os', 'os'], ['country', 'country']].forEach(function (pair) {
       var entries = Object.keys(bd[pair[0]] || {}).map(function (k) { return [k, bd[pair[0]][k]]; })
         .sort(function (a, b) { return b[1] - a[1]; }).slice(0, 12);
       if (!entries.length) return;
       var box = el('div', 'vp-bd');
-      box.appendChild(el('h4', null, pair[1]));
+      box.appendChild(el('h4', null, T(pair[1])));
       var total = entries.reduce(function (s, r) { return s + r[1]; }, 0) || 1;
       entries.forEach(function (r) {
         var row = el('div', 'vp-row');
-        row.appendChild(el('span', 'vp-row-label', r[0] || '未知'));
+        row.appendChild(el('span', 'vp-row-label', r[0] || T('unknown')));
         var bw = el('span', 'vp-bar');
         var bf = el('span', 'vp-bar-fill');
         bf.style.width = Math.round((r[1] * 100) / total) + '%';
@@ -150,19 +195,143 @@
 
   function renderResults(results, root) {
     root.textContent = '';
-    root.appendChild(el('p', 'vp-total', '共 ' + results.total + ' 份答卷'));
+    var head = el('div', 'vp-results-head');
+    head.appendChild(el('p', 'vp-total', T('totalResponses', { n: results.total })));
+    if (window.qrcode && results.questions) {
+      var share = el('button', 'vp-btn ghost small', T('sharePoster'));
+      share.type = 'button';
+      share.addEventListener('click', function () {
+        try { makePoster(currentData, results); } catch (e) { alert(T('posterFailed')); }
+      });
+      head.appendChild(share);
+    }
+    root.appendChild(head);
     (results.questions || []).forEach(function (q) { root.appendChild(renderQuestionResult(q)); });
     if (results.breakdown) root.appendChild(renderBreakdown(results.breakdown));
   }
 
-  /* ---------- 表单 ---------- */
-  function markVoted(pollId) {
-    try { localStorage.setItem('vp_voted_' + pollId, '1'); } catch (e) { /* ignore */ }
+  /* ---------- 分享海报（亮色主题渲染，含二维码） ---------- */
+  function hexToRgba(hex, a) {
+    var h = hex.replace('#', '');
+    if (h.length !== 6) return 'rgba(0,0,0,' + a + ')';
+    var n = parseInt(h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
   }
-  function hasMarkedVoted(pollId) {
-    try { return localStorage.getItem('vp_voted_' + pollId) === '1'; } catch (e) { return false; }
+  function rr(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  function wrapText(ctx, text, maxWidth, maxLines) {
+    var lines = [];
+    var cur = '';
+    text.split('').forEach(function (ch) {
+      if (ctx.measureText(cur + ch).width > maxWidth || ch === '\n') {
+        lines.push(cur);
+        cur = ch === '\n' ? '' : ch;
+        if (lines.length === maxLines) cur = '';
+      } else {
+        cur += ch;
+      }
+    });
+    if (cur && lines.length < maxLines) lines.push(cur);
+    if (lines.length === maxLines && text.length > lines.join('').length) {
+      lines[maxLines - 1] = lines[maxLines - 1].slice(0, -1) + '…';
+    }
+    return lines;
   }
 
+  function makePoster(data, results) {
+    // 海报固定用亮色 token 渲染（分享图观感稳定）
+    var W = 1080, H = 1440, M = 56;
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var ctx = c.getContext('2d');
+    var font = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif';
+    var bg = '#f5f6f7', paper = '#ffffff', ink = '#25282c', muted = '#777c82';
+    var accent = (data.accent && /^#[0-9a-fA-F]{6}$/.test(data.accent)) ? data.accent : cssVar('--bc-accent', '#f8c91c').replace('#', '') && ('#' + cssVar('--bc-accent', '#f8c91c').replace('#', ''));
+    if (!/^#[0-9a-fA-F]{6}$/.test(accent)) accent = '#f8c91c';
+    var accentInk = '#4c3b05';
+
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    rr(ctx, M, M, W - 2 * M, H - 2 * M, 44);
+    ctx.fillStyle = paper;
+    ctx.fill();
+
+    // 顶部胶囊条
+    rr(ctx, M + 52, M + 60, 128, 14, 7);
+    ctx.fillStyle = accent;
+    ctx.fill();
+
+    // 标题
+    ctx.fillStyle = ink;
+    ctx.font = '600 60px ' + font;
+    ctx.textBaseline = 'top';
+    var lines = wrapText(ctx, data.poll.title || '', W - 2 * M - 104, 3);
+    var y = M + 108;
+    lines.forEach(function (l) { ctx.fillText(l, M + 52, y); y += 80; });
+
+    // 答卷数
+    y += 8;
+    ctx.font = '500 38px ' + font;
+    var stat = String(results.total) + ' ' + T('responsesLabel');
+    var sw = ctx.measureText(stat).width;
+    rr(ctx, M + 52, y, sw + 56, 72, 20);
+    ctx.fillStyle = hexToRgba(accent, 0.16);
+    ctx.fill();
+    ctx.fillStyle = accentInk;
+    ctx.fillText(stat, M + 52 + 28, y + 16);
+
+    // 二维码卡片
+    var qrSize = 380, qx = (W - qrSize) / 2, qy = H - M - 120 - 96 - qrSize;
+    var qr = window.qrcode(0, 'M');
+    qr.addData(data.poll.link);
+    qr.make();
+    var count = qr.getModuleCount();
+    var cell = qrSize / count;
+    rr(ctx, qx - 24, qy - 24, qrSize + 48, qrSize + 48, 28);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    ctx.fillStyle = ink;
+    for (var r = 0; r < count; r++) {
+      for (var col = 0; col < count; col++) {
+        if (qr.isDark(r, col)) {
+          ctx.fillRect(qx + col * cell, qy + r * cell, Math.ceil(cell), Math.ceil(cell));
+        }
+      }
+    }
+    ctx.fillStyle = muted;
+    ctx.font = '500 34px ' + font;
+    ctx.textAlign = 'center';
+    ctx.fillText(T('scanToVote'), W / 2, qy + qrSize + 44);
+
+    // 品牌页脚
+    ctx.fillStyle = ink;
+    ctx.font = '600 36px ' + font;
+    ctx.fillText(T('posterBrand'), W / 2, H - M - 92);
+    ctx.fillStyle = muted;
+    ctx.font = '400 26px ' + font;
+    ctx.fillText(T('tagline'), W / 2, H - M - 46);
+    ctx.textAlign = 'left';
+
+    c.toBlob(function (blob) {
+      if (!blob) { alert(T('posterFailed')); return; }
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'voxpop-' + data.poll.id + '.png';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+    }, 'image/png');
+  }
+
+  /* ---------- 级联 ---------- */
   function buildCascade(q, opts, state) {
     var byParent = {};
     var byId = {};
@@ -178,7 +347,7 @@
       if (!list.length) return;
       var sel = el('select', 'vp-input');
       sel.dataset.level = String(depth);
-      var ph = el('option', null, depth === 0 ? '请选择' : '请选择下一级');
+      var ph = el('option', null, depth === 0 ? T('selectLevel') : T('selectNext'));
       ph.value = '';
       sel.appendChild(ph);
       list.forEach(function (o) {
@@ -209,25 +378,36 @@
     return holder;
   }
 
+  /* ---------- 表单 ---------- */
+  function markVoted(pollId) {
+    try { localStorage.setItem('vp_voted_' + pollId, '1'); } catch (e) { /* ignore */ }
+  }
+  function hasMarkedVoted(pollId) {
+    try { return localStorage.getItem('vp_voted_' + pollId) === '1'; } catch (e) { return false; }
+  }
+
   function initForm(data) {
     var root = document.getElementById('vp-root');
     if (!root) return;
     root.textContent = '';
-    if (data.closed) root.appendChild(el('p', 'vp-banner', '调研已截止，仅展示结果'));
+    if (data.closed) root.appendChild(el('p', 'vp-banner', T('closedBanner')));
     if (data.hasVoted || hasMarkedVoted(data.poll.id)) {
-      root.appendChild(el('p', 'vp-banner', '你已参与过这次调研'));
+      root.appendChild(el('p', 'vp-banner', T('votedBanner')));
+    }
+    if (data.closed && !data.hasVoted && data.poll.resultPolicy === 'after_close') {
+      // 截止且未投过：无结果可看（服务端已保证 closed 必出结果，这里只是兜底文案）
     }
 
     var state = {};
     var questionsEl = el('div');
     data.questions.forEach(function (q) {
       var box = el('section', 'vp-q');
-      box.appendChild(el('h3', null, q.title + (q.required ? '' : '（选填）')));
+      box.appendChild(el('h3', null, q.title + (q.required ? '' : T('optionalPostfix'))));
       if (q.type === 'text') {
         var ta = el('textarea', 'vp-input');
         ta.rows = 3;
         ta.maxLength = q.maxLen || 200;
-        ta.placeholder = '请输入（最多 ' + (q.maxLen || 200) + ' 字）';
+        ta.placeholder = T('textPlaceholder', { n: q.maxLen || 200 });
         ta.addEventListener('input', function () {
           state[q.id] = { text: ta.value.trim() };
         });
@@ -249,7 +429,9 @@
             if (q.type === 'multi' && q.maxChoices && ids.length > q.maxChoices) {
               input.checked = false;
               ids = ids.filter(function (v) { return v !== input.value; });
-              box.appendChild(el('p', 'vp-muted', '最多可选 ' + q.maxChoices + ' 项'));
+              var tip = box.querySelector('.vp-tip');
+              if (tip) tip.remove();
+              box.appendChild(el('p', 'vp-muted vp-tip', T('maxChoicesTip', { n: q.maxChoices })));
             }
             state[q.id] = { optionIds: ids };
           });
@@ -264,7 +446,7 @@
     // Turnstile（配置了 site key 时）
     var turnstileToken = '';
     if (data.turnstileSiteKey) {
-      var w = el('div', 'cf-turnstile');
+      var w = el('div', 'cf-turnstile vp-turnstile');
       w.setAttribute('data-sitekey', data.turnstileSiteKey);
       root.appendChild(w);
       var timer = setInterval(function () {
@@ -273,7 +455,8 @@
       }, 300);
     }
 
-    var btn = el('button', 'vp-btn', '提交');
+    var btn = el('button', 'vp-btn', T('submit'));
+    btn.type = 'button';
     var msg = el('span', 'vp-msg');
     var actions = el('div', 'vp-actions');
     actions.appendChild(btn);
@@ -285,7 +468,7 @@
         var q = data.questions[i];
         var a = state[q.id];
         var answered = q.type === 'text' ? !!(a && a.text) : !!(a && a.optionIds && a.optionIds.length);
-        if (q.required && !answered) { msg.textContent = '请完成：' + q.title; return; }
+        if (q.required && !answered) { msg.textContent = T('pleaseComplete', { title: q.title }); return; }
       }
       msg.textContent = '';
       btn.disabled = true;
@@ -312,20 +495,22 @@
           root.textContent = '';
           if (res.j.results) renderResults(res.j.results, root);
           else {
-            root.appendChild(el('p', 'vp-thanks', '提交成功，感谢你的声音！'));
-            if (data.closed) root.appendChild(el('p', 'vp-banner', '调研已截止'));
+            root.appendChild(el('p', 'vp-thanks', T('thanks')));
+            if (data.closed) root.appendChild(el('p', 'vp-banner', T('closedBanner')));
+            if (data.poll.resultPolicy === 'after_close') root.appendChild(el('p', 'vp-banner', T('resultsHiddenNotice')));
           }
         } else if (res.status === 409) {
           msg.textContent = '';
           root.textContent = '';
-          root.appendChild(el('p', 'vp-banner', '你已提交过这份问卷'));
+          root.appendChild(el('p', 'vp-banner', T('alreadySubmitted')));
           if (res.j.results) renderResults(res.j.results, root);
         } else {
-          msg.textContent = res.j && res.j.error ? '提交失败：' + res.j.error : '提交失败，请稍后再试';
+          var code = res.j && res.j.error ? res.j.error : '';
+          msg.textContent = code ? T('submitFailed', { reason: T(code) }) : T('networkError');
           btn.disabled = false;
         }
       }).catch(function () {
-        msg.textContent = '网络异常，请稍后再试';
+        msg.textContent = T('networkError');
         btn.disabled = false;
       });
     });
@@ -340,16 +525,17 @@
 
   /* ---------- 启动 ---------- */
   pageview();
+  initThemeToggle();
   var dataEl = document.getElementById('vp-data');
+  var currentData = null;
   if (dataEl) {
-    var data;
-    try { data = JSON.parse(dataEl.textContent); } catch (e) { data = null; }
+    try { currentData = JSON.parse(dataEl.textContent); } catch (e) { currentData = null; }
     var root = document.getElementById('vp-root');
-    if (data && root) {
-      if (data.mode === 'form') initForm(data);
-      else if (data.results) renderResults(data.results, root);
+    if (currentData && root) {
+      if (currentData.mode === 'form') initForm(currentData);
+      else if (currentData.results) renderResults(currentData.results, root);
       else {
-        root.appendChild(el('p', 'vp-banner', data.closed ? '调研已截止' : '暂不可见'));
+        root.appendChild(el('p', 'vp-banner', currentData.closed ? T('closedBanner') : T('resultsHiddenNotice')));
       }
     }
   }

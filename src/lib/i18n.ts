@@ -116,9 +116,22 @@ export const DICT: Record<string, Entry> = {
     en: 'Channel targeting (comma separated, blank = all channels)',
   },
   appsLabel: {
-    zh: '应用定向（逗号分隔自定义应用，留空 = 全部应用）',
-    en: 'App targeting (comma separated, blank = all apps)',
+    zh: '应用定向（留空 = 全部应用）',
+    en: 'App targeting (blank = all apps)',
   },
+  registryTitle: { zh: '标签维护', en: 'Tag registry' },
+  registryHint: {
+    zh: '应用与渠道用于 App 发现接口的定向；问卷创建时从这里勾选，避免手填出错。',
+    en: 'Apps & channels power app-feed targeting; pick them from here when creating polls.',
+  },
+  kindApps: { zh: '应用', en: 'Apps' },
+  kindChannels: { zh: '渠道', en: 'Channels' },
+  slugLabel: { zh: '标识 slug', en: 'Slug' },
+  nameLabel: { zh: '显示名', en: 'Display name' },
+  addTag: { zh: '添加', en: 'Add' },
+  delTag: { zh: '删除', en: 'Delete' },
+  noTags: { zh: '暂无标签，先在下面添加', en: 'No tags yet — add below' },
+  goRegistry: { zh: '去标签维护', en: 'Manage tags' },
 
   // 新建问卷表单
   createTitle: { zh: '新建问卷', en: 'Create a poll' },

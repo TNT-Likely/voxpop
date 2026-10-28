@@ -8,7 +8,7 @@ import { dictFor, detectLocale, t, type Locale } from '../lib/i18n';
 import {
   buildResults, getOptionsByQuestionIds, getPoll, getQuestions, hasResponded, listOpenPolls,
 } from '../lib/db';
-import type { ResultsPayload } from '../lib/db';
+import type { RegistryEntry, ResultsPayload } from '../lib/db';
 import { ensureVid, voterHash } from '../lib/identity';
 
 export const pages = new Hono<{ Bindings: Env }>();
@@ -123,7 +123,12 @@ async function renderPollPage(c: Context<{ Bindings: Env }>, id: string, embed: 
 
 /* ---------- 新建问卷表单（后台与自助建票共用） ---------- */
 
-export function newPollFormBody(loc: Locale, isAdmin: boolean): string {
+export interface RegistryLists { apps: RegistryEntry[]; channels: RegistryEntry[] }
+
+export function newPollFormBody(loc: Locale, isAdmin: boolean, registry: RegistryLists = { apps: [], channels: [] }): string {
+  const checks = (name: string, list: RegistryEntry[]) => list.length
+    ? `<div class="vp-checks">${list.map((x) => `<label class="vp-check"><input type="checkbox" name="${name}" value="${esc(x.slug)}"> ${esc(x.name)} <code class="vp-slug">${esc(x.slug)}</code></label>`).join('')}</div>`
+    : `<p class="vp-muted">${esc(t(loc, 'noTags'))} · <a href="/admin/registry">${esc(t(loc, 'goRegistry'))}</a></p>`;
   return `
   <div class="vp-field"><label>${esc(t(loc, 'pollTitleLabel'))}</label><input id="f-title" maxlength="80" placeholder="${esc(t(loc, 'pollTitlePlaceholder'))}"></div>
   <div class="vp-field"><label>${esc(t(loc, 'descLabel'))}</label><input id="f-desc" maxlength="300"></div>
@@ -145,8 +150,8 @@ export function newPollFormBody(loc: Locale, isAdmin: boolean): string {
   </div>
   ${isAdmin ? `
   <div class="vp-field"><label>${esc(t(loc, 'extraKeysLabel'))}</label><input id="f-extra-keys" maxlength="200" placeholder="src,app_ver,platform"></div>
-  <div class="vp-field"><label>${esc(t(loc, 'appsLabel'))}</label><input id="f-apps" maxlength="200" placeholder="beecount, panwatch"></div>
-  <div class="vp-field"><label>${esc(t(loc, 'channelsLabel'))}</label><input id="f-channels" maxlength="200" placeholder="appstore, ipa, apk, googleplay"></div>` : ''}
+  <div class="vp-field"><label>${esc(t(loc, 'appsLabel'))}</label>${checks('apps', registry.apps)}</div>
+  <div class="vp-field"><label>${esc(t(loc, 'channelsLabel'))}</label>${checks('channels', registry.channels)}</div>` : ''}
   <h2 class="vp-section">${esc(t(loc, 'questionsTitle'))}</h2>
   <div id="vp-questions"></div>
   <button type="button" id="vp-add-question" class="vp-btn ghost">${esc(t(loc, 'addQuestion'))}</button>

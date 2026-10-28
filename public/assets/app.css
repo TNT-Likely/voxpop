@@ -360,6 +360,26 @@ input[type="radio"]:checked::before { transform: scale(1); }
 input[type="checkbox"]:checked::before { transform: rotate(-45deg) scale(1); }
 input[type="radio"]:disabled, input[type="checkbox"]:disabled { opacity: .4; cursor: default; }
 
+/* ---------- 标签勾选组 / 注册表 ---------- */
+.vp-checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.vp-check {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--bc-soft); border: 1.5px solid transparent;
+  border-radius: var(--r-ctrl); padding: 8px 12px; min-height: 44px;
+  cursor: pointer; font-size: 13px;
+}
+.vp-check:hover { border-color: var(--bc-line); }
+.vp-check:has(input:checked) { background: var(--bc-tint); border-color: var(--bc-accent); }
+.vp-check input { margin: 0; }
+.vp-slug { font-size: 11px; color: var(--bc-muted); }
+.vp-reg-list { list-style: none; margin: 0 0 10px; padding: 0; }
+.vp-reg-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--bc-line); font-size: 13px;
+}
+.vp-reg-list li:last-child { border-bottom: none; }
+.vp-reg-list li span { flex: 1; }
+
 /* ---------- 窄屏：提交按钮通栏 ---------- */
 @media (max-width: 520px) {
   .vp-title, .vp-home-title { font-size: 21px; }

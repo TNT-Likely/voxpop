@@ -115,6 +115,36 @@ export async function setPollApps(db: D1Database, id: string, apps: string): Pro
   await db.prepare('UPDATE polls SET apps = ? WHERE id = ?').bind(apps, id).run();
 }
 
+/* ---------- 标签注册表（应用 / 渠道的 slug + 显示名，后台维护） ---------- */
+
+export interface RegistryEntry { slug: string; name: string }
+
+export async function listRegistry(db: D1Database, kind: 'app' | 'channel'): Promise<RegistryEntry[]> {
+  const { results } = await db.prepare(
+    'SELECT slug, name FROM registry WHERE kind = ? ORDER BY created_at, slug'
+  ).bind(kind).all();
+  return (results ?? []) as unknown as RegistryEntry[];
+}
+
+export async function addRegistry(db: D1Database, kind: 'app' | 'channel', slug: string, name: string): Promise<void> {
+  await db.prepare(
+    'INSERT OR REPLACE INTO registry (kind, slug, name, created_at) VALUES (?, ?, ?, ?)'
+  ).bind(kind, slug, name, nowSec()).run();
+}
+
+export async function deleteRegistry(db: D1Database, kind: 'app' | 'channel', slug: string): Promise<void> {
+  await db.prepare('DELETE FROM registry WHERE kind = ? AND slug = ?').bind(kind, slug).run();
+}
+
+/** slug → 显示名（找不到时回退 slug 本身） */
+export async function registryNameMaps(db: D1Database): Promise<{ apps: Map<string, string>; channels: Map<string, string> }> {
+  const [apps, channels] = await Promise.all([listRegistry(db, 'app'), listRegistry(db, 'channel')]);
+  return {
+    apps: new Map(apps.map((a) => [a.slug, a.name])),
+    channels: new Map(channels.map((ch) => [ch.slug, ch.name])),
+  };
+}
+
 /** 自助建票限流：某创建者指纹当天已创建的问卷数 */
 export async function countRecentByCreator(db: D1Database, creatorHash: string): Promise<number> {
   const dayStart = utcDayStartSec(0);

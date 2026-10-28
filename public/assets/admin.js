@@ -90,8 +90,11 @@
     var closeDays = parseInt(document.getElementById('f-close-days').value, 10);
     var accentEl = document.getElementById('f-accent');
     var extraEl = document.getElementById('f-extra-keys');
-    var channelsEl = document.getElementById('f-channels');
-    var appsEl = document.getElementById('f-apps');
+    function checkedVals(boxId) {
+      var box = document.getElementById(boxId);
+      if (!box) return '';
+      return Array.prototype.slice.call(box.querySelectorAll('input:checked')).map(function (i) { return i.value; }).join(',');
+    }
     var payload = {
       title: title,
       description: document.getElementById('f-desc').value.trim(),
@@ -100,8 +103,8 @@
       closeInDays: isNaN(closeDays) ? null : closeDays,
       accent: accentEl ? accentEl.value.trim() : '',
       extraKeys: extraEl ? extraEl.value.trim() : '',
-      channels: channelsEl ? channelsEl.value.trim() : '',
-      apps: appsEl ? appsEl.value.trim() : '',
+      channels: checkedVals('f-channels-box'),
+      apps: checkedVals('f-apps-box'),
       questions: questions
     };
     var ti = document.querySelector('[name="cf-turnstile-response"]');

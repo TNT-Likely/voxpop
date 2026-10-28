@@ -30,7 +30,8 @@
     }
   ],
   "vars": {
-    "SAMPLE_RATE": "1.0"
+    "SAMPLE_RATE": "1.0",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAFpzG4Y9x81SH7Pr"
   },
   "triggers": {
     // 每日 03:17 UTC 聚合 events -> event_daily 并清理 180 天前明细

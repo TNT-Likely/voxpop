@@ -6,6 +6,10 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "voxpop",
   "main": "src/index.ts",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "voxpop.beejz.com", "custom_domain": true }
+  ],
   "compatibility_date": "2025-10-01",
   "assets": {
     "directory": "./public",

@@ -47,21 +47,30 @@ export function layout(o: LayoutOpts): string {
   const other: Locale = locale === 'zh' ? 'en' : 'zh';
   const chrome = o.embed
     ? ''
-    : `<header class="vp-header">
-  <a class="vp-logo" href="/">众声 <span>VoxPop</span></a>
+    : `<header class="vp-header"><div class="vp-header-in">
+  <a class="vp-logo" href="/">众声<span class="vp-logo-chip">VoxPop</span></a>
   <span class="vp-tagline">${esc(t(locale, 'tagline'))}</span>
-  <nav class="vp-nav">
-    <a href="/new">${esc(t(locale, 'newPoll'))}</a>
-    <a href="/admin">${esc(t(locale, 'admin'))}</a>
-  </nav>
-  <div class="vp-tools">
+  <div class="vp-header-right">
+    <nav class="vp-nav">
+      <a href="/new">${esc(t(locale, 'newPoll'))}</a>
+      <a href="/admin">${esc(t(locale, 'admin'))}</a>
+    </nav>
+    <span class="vp-divider"></span>
     <a class="vp-lang" href="${esc(langHref(o.path, other))}" title="${other === 'en' ? 'English' : '切换到中文'}">${locale === 'zh' ? 'EN' : '中文'}</a>
     <button id="vp-theme-toggle" type="button" class="vp-icon-btn" aria-label="${esc(t(locale, 'themeAuto'))}" title="${esc(t(locale, 'themeAuto'))}">◐</button>
   </div>
-</header>`;
+</div></header>`;
   const footer = o.embed
     ? ''
-    : `<footer class="vp-footer">${esc(t(locale, 'footerPrivacy'))} · Powered by <a href="https://github.com/TNT-Likely/voxpop" target="_blank" rel="noopener">众声 VoxPop</a></footer>`;
+    : `<footer class="vp-footer"><div class="vp-footer-in">
+  <div class="vp-footer-brand">众声 <span class="vp-logo-chip sm">VoxPop</span></div>
+  <p class="vp-footer-privacy">${esc(t(locale, 'footerPrivacy'))}</p>
+  <div class="vp-footer-links">
+    <a href="https://github.com/TNT-Likely/voxpop" target="_blank" rel="noopener">GitHub</a>
+    <a href="/new">${esc(t(locale, 'newPoll'))}</a>
+    <a href="/admin">${esc(t(locale, 'admin'))}</a>
+  </div>
+</div></footer>`;
   const bodyAttrs = o.createEndpoint ? ` data-create-endpoint="${esc(o.createEndpoint)}"` : '';
   return `<!doctype html>
 <html lang="${locale === 'zh' ? 'zh-CN' : 'en'}">

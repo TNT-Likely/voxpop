@@ -64,20 +64,27 @@ code {
 :focus-visible { outline: 2px solid var(--bc-accent); outline-offset: 3px; border-radius: 4px; }
 ::selection { background: var(--bc-tint); }
 
-/* ---------- 顶栏 ---------- */
-.vp-header {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 14px 17px;
+/* ---------- 顶栏（单行、与内容同宽对齐） ---------- */
+.vp-header { padding: 14px 17px 6px; }
+.vp-header-in {
+  max-width: 780px; margin: 0 auto;
+  display: flex; align-items: center; gap: 10px;
 }
-.vp-logo { font-size: 20px; font-weight: 650; letter-spacing: -.3px; }
-.vp-logo span { color: var(--bc-accent-ink); background: var(--bc-accent); padding: 1px 8px; border-radius: var(--r-sm); }
+.vp-logo { font-size: 20px; font-weight: 650; letter-spacing: -.3px; display: inline-flex; align-items: center; gap: 6px; }
+.vp-logo-chip {
+  background: var(--bc-accent); color: var(--bc-accent-ink);
+  padding: 2px 10px; border-radius: 10px; font-weight: 650;
+}
+.vp-logo-chip.sm { font-size: 13px; padding: 1px 8px; border-radius: 8px; }
 .vp-tagline { color: var(--bc-muted); font-size: 12px; }
-.vp-nav { display: flex; gap: 4px; margin-left: auto; }
+.vp-header-right { margin-left: auto; display: flex; align-items: center; gap: 2px; }
+.vp-nav { display: flex; gap: 2px; }
 .vp-nav a {
-  font-size: 13px; font-weight: 500; padding: 8px 12px;
+  font-size: 13px; font-weight: 500; padding: 8px 11px;
   border-radius: var(--r-ctrl); min-height: 36px; display: inline-flex; align-items: center;
 }
 .vp-nav a:hover { background: var(--bc-soft); text-decoration: none; }
+.vp-divider { width: 1px; height: 18px; background: var(--bc-line); margin: 0 6px; }
 .vp-tools { display: flex; align-items: center; gap: 6px; }
 .vp-lang { font-size: 12px; font-weight: 500; color: var(--bc-muted); padding: 8px 10px; border-radius: var(--r-ctrl); min-height: 36px; display: inline-flex; align-items: center; }
 .vp-lang:hover { background: var(--bc-soft); text-decoration: none; color: var(--bc-ink); }
@@ -87,10 +94,23 @@ code {
   cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
 }
 .vp-icon-btn:hover { background: var(--bc-soft); }
+@media (max-width: 640px) {
+  .vp-tagline { display: none; }
+  .vp-header-in { gap: 6px; }
+  .vp-nav a { padding: 8px 9px; }
+}
 
 /* ---------- 主区 ---------- */
 .vp-main { max-width: 780px; margin: 0 auto; padding: 18px 17px 56px; }
 .vp-main.vp-embed { padding: 10px 4px 16px; max-width: 640px; }
+
+/* ---------- 页脚 ---------- */
+.vp-footer { border-top: 1px solid var(--bc-line); margin-top: 36px; padding: 26px 17px 46px; }
+.vp-footer-in { max-width: 780px; margin: 0 auto; text-align: center; }
+.vp-footer-brand { font-size: 15px; font-weight: 650; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.vp-footer-privacy { color: var(--bc-muted); font-size: 12px; margin: 8px 0 12px; }
+.vp-footer-links { display: flex; justify-content: center; gap: 16px; font-size: 12px; color: var(--bc-muted); }
+.vp-footer-links a:hover { color: var(--bc-ink); }
 .vp-footer {
   text-align: center; color: var(--bc-muted); font-size: 12px;
   padding: 24px 17px 40px;
@@ -254,10 +274,63 @@ form.inline { display: inline-block; margin: 0; }
 .vp-chart-box { background: var(--bc-paper); border-radius: var(--r-card); padding: 14px 16px; }
 .vp-chart-box h4 { margin: 0 0 6px; font-size: 13px; color: var(--bc-muted); font-weight: 500; }
 
-/* ---------- 窄屏 ---------- */
+/* ---------- 页脚 ---------- */
+.vp-footer {
+  border-top: 1px solid var(--bc-line); margin-top: 36px;
+  padding: 26px 17px 46px;
+}
+.vp-footer-in { max-width: 780px; margin: 0 auto; text-align: center; }
+.vp-footer-brand { font-size: 15px; font-weight: 650; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.vp-footer-privacy { color: var(--bc-muted); font-size: 12px; margin: 8px 0 12px; }
+.vp-footer-links { display: flex; justify-content: center; gap: 16px; font-size: 12px; color: var(--bc-muted); }
+.vp-footer-links a:hover { color: var(--bc-ink); }
+
+/* ---------- select 美化（自绘箭头；系统弹层字号随控件字号） ---------- */
+select.vp-input {
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23777c82' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 38px;
+  font-size: 14px;
+}
+
+/* ---------- 自绘 radio / checkbox（v4 风格：accent 填充 + accent-ink 图形） ---------- */
+input[type="radio"], input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 20px; height: 20px; min-height: 20px; flex: none; margin: 0;
+  border: 2px solid color-mix(in srgb, var(--bc-ink) 30%, transparent);
+  background: var(--bc-paper);
+  display: inline-grid; place-items: center;
+  cursor: pointer; padding: 0; vertical-align: middle;
+  transition: background .15s ease, border-color .15s ease;
+}
+input[type="radio"] { border-radius: 50%; }
+input[type="checkbox"] { border-radius: 6px; }
+input[type="radio"]::before {
+  content: ""; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--bc-accent-ink);
+  transform: scale(0); transition: transform .15s ease;
+}
+input[type="checkbox"]::before {
+  content: ""; width: 11px; height: 6px; margin-top: -2px;
+  border-left: 2.5px solid var(--bc-accent-ink); border-bottom: 2.5px solid var(--bc-accent-ink);
+  transform: rotate(-45deg) scale(0); transition: transform .15s ease;
+}
+input[type="radio"]:checked, input[type="checkbox"]:checked {
+  background: var(--bc-accent); border-color: var(--bc-accent);
+}
+input[type="radio"]:checked::before { transform: scale(1); }
+input[type="checkbox"]:checked::before { transform: rotate(-45deg) scale(1); }
+input[type="radio"]:disabled, input[type="checkbox"]:disabled { opacity: .4; cursor: default; }
+
+/* ---------- 窄屏：提交按钮通栏 ---------- */
 @media (max-width: 520px) {
   .vp-title, .vp-home-title { font-size: 21px; }
   .vp-row-label { max-width: 38%; }
-  .vp-nav a { padding: 8px 9px; }
   .vp-main { padding: 14px 14px 48px; }
+  .vp-actions { flex-direction: column; align-items: stretch; }
+  .vp-actions .vp-btn { width: 100%; }
+  .vp-msg { text-align: center; }
+  .vp-footer { padding-bottom: 40px; }
 }

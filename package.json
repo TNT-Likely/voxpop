@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy",
     "db:local": "wrangler d1 execute voxpop --local --file=./migrations/0001_init.sql",
     "db:remote": "wrangler d1 execute voxpop --remote --file=./migrations/0001_init.sql",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "hono": "^4.6.0"
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.0.0",
     "typescript": "^5.6.0",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.0.0",
+    "vitest": "^4.1.12"
   }
 }

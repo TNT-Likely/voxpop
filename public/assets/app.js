@@ -42,11 +42,17 @@
     }
     function icon(t) { return t === 'light' ? '☀' : t === 'dark' ? '☾' : '◐'; }
     function label(t) { return T(t === 'light' ? 'themeLight' : t === 'dark' ? 'themeDark' : 'themeAuto'); }
+    function effTheme() {
+      // URL ?theme= 是硬覆盖（嵌入场景），优先于本地偏好
+      var q = new URLSearchParams(location.search).get('theme');
+      if (q === 'dark' || q === 'light') return q;
+      var t = stored();
+      if (t === 'auto') return (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      return t;
+    }
     function apply() {
       var t = stored();
-      var eff = t;
-      if (t === 'auto') eff = (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-      document.documentElement.dataset.theme = eff;
+      document.documentElement.dataset.theme = effTheme();
       btn.textContent = icon(t);
       btn.title = label(t);
       btn.setAttribute('aria-label', label(t));

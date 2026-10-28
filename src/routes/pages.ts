@@ -90,7 +90,7 @@ async function renderPollPage(c: Context<{ Bindings: Env }>, id: string, embed: 
     mode: showResults ? 'results' : 'form',
     closed,
     hasVoted,
-    poll: { id: poll.id, title: poll.title, link: new URL(c.req.url).origin + '/p/' + poll.id },
+    poll: { id: poll.id, title: poll.title, link: new URL(c.req.url).origin + '/p/' + poll.id, dedupMode: poll.dedup_mode },
     questions: questions.map((q) => ({
       id: q.id, type: q.type, title: q.title,
       required: !!q.required, maxChoices: q.max_choices, maxLen: q.max_len,

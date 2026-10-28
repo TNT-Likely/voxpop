@@ -225,6 +225,10 @@ select.vp-input:focus, textarea.vp-input:focus, input.vp-input:focus {
 .vp-turnstile { margin: 14px 0; }
 .vp-error { color: var(--bc-danger); font-size: 13px; }
 
+.vp-locked .vp-q { opacity: .6; }
+.vp-locked .vp-choice { cursor: default; }
+.vp-locked .vp-actions { opacity: .75; }
+
 /* ---------- 结果 ---------- */
 .vp-results-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .vp-total { color: var(--bc-muted); font-size: 13px; margin: 0; }

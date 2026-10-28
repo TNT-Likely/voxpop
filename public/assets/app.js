@@ -402,6 +402,7 @@
     if (!root) return;
     root.textContent = '';
     if (data.closed) root.appendChild(el('p', 'vp-banner', T('closedBanner')));
+    var locked = data.hasVoted || (data.poll.dedupMode !== 'open' && hasMarkedVoted(data.poll.id));
     if (data.hasVoted || hasMarkedVoted(data.poll.id)) {
       root.appendChild(el('p', 'vp-banner', T('votedBanner')));
     }
@@ -473,6 +474,13 @@
     actions.appendChild(btn);
     actions.appendChild(msg);
     root.appendChild(actions);
+
+    // 已参与（非宽松模式）：整表禁用，仅展示
+    if (locked) {
+      root.classList.add('vp-locked');
+      Array.prototype.slice.call(root.querySelectorAll('input, select, textarea')).forEach(function (n) { n.disabled = true; });
+      btn.disabled = true;
+    }
 
     btn.addEventListener('click', function () {
       for (var i = 0; i < data.questions.length; i++) {

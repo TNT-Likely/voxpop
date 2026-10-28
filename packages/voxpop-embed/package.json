@@ -1,0 +1,25 @@
+{
+  "name": "voxpop-embed",
+  "version": "0.1.0",
+  "description": "众声 VoxPop 嵌入脚本——一行代码把 VoxPop 问卷嵌入任意网页 | Embed script for VoxPop, a free-forever poll service on Cloudflare Workers",
+  "main": "index.js",
+  "files": [
+    "index.js"
+  ],
+  "keywords": [
+    "voxpop",
+    "poll",
+    "survey",
+    "embed",
+    "widget",
+    "cloudflare",
+    "workers"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TNT-Likely/voxpop.git",
+    "directory": "packages/voxpop-embed"
+  },
+  "homepage": "https://github.com/TNT-Likely/voxpop"
+}

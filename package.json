@@ -1,0 +1,21 @@
+{
+  "name": "voxpop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "众声 VoxPop —— 跑在 Cloudflare 免费层上的开源投票站 | A free-forever, embeddable poll service on Cloudflare Workers",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 execute voxpop --local --file=./migrations/0001_init.sql",
+    "db:remote": "wrangler d1 execute voxpop --remote --file=./migrations/0001_init.sql",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}

@@ -28,9 +28,11 @@
   function toggleFields(box) {
     var t = box.querySelector('.q-type').value;
     box.querySelector('.q-opts-field').hidden = t === 'text';
+    box.querySelector('.q-opts-en-field').hidden = t === 'text';
     box.querySelector('.q-multi-field').hidden = t !== 'multi';
     box.querySelector('.q-text-field').hidden = t !== 'text';
     box.querySelector('.q-options').placeholder = t === 'cascade' ? CASCADE_HINT : NORMAL_HINT;
+    box.querySelector('.q-options-en').placeholder = t === 'cascade' ? CASCADE_HINT : NORMAL_HINT;
   }
 
   function addQuestion() {
@@ -48,6 +50,11 @@
       '</div>' +
       '<div class="vp-field q-opts-field"><label>' + T('optionsLabel') + '</label>' +
       '<textarea class="q-options" rows="6"></textarea></div>' +
+      '<details class="q-en"><summary>English (optional)</summary>' +
+      '<div class="vp-field"><label>English title</label><input class="q-title-en" maxlength="120"></div>' +
+      '<div class="vp-field q-opts-en-field"><label>English options (same lines &amp; indent as Chinese)</label>' +
+      '<textarea class="q-options-en" rows="6"></textarea></div>' +
+      '</details>' +
       '<div class="vp-field"><label><input type="checkbox" class="q-required" checked> ' + T('requiredLabel') + '</label> ' +
       '<button type="button" class="vp-link q-del">' + T('removeQuestion') + '</button></div>';
     document.getElementById('vp-questions').appendChild(box);
@@ -71,10 +78,12 @@
       questions.push({
         type: type,
         title: title,
+        titleEn: box.querySelector('.q-title-en').value.trim(),
         required: box.querySelector('.q-required').checked,
         maxChoices: parseInt(box.querySelector('.q-max-choices').value, 10) || 2,
         maxLen: parseInt(box.querySelector('.q-max-len').value, 10) || 200,
-        optionsText: optionsText
+        optionsText: optionsText,
+        optionsTextEn: box.querySelector('.q-options-en').value
       });
       if (!title) bad = T('needQTitle');
       else if (type !== 'text') {
@@ -90,6 +99,8 @@
     var closeDays = parseInt(document.getElementById('f-close-days').value, 10);
     var accentEl = document.getElementById('f-accent');
     var extraEl = document.getElementById('f-extra-keys');
+    var titleEnEl = document.getElementById('f-title-en');
+    var descEnEl = document.getElementById('f-desc-en');
     function checkedVals(boxId) {
       var box = document.getElementById(boxId);
       if (!box) return '';
@@ -97,7 +108,9 @@
     }
     var payload = {
       title: title,
+      titleEn: titleEnEl ? titleEnEl.value.trim() : '',
       description: document.getElementById('f-desc').value.trim(),
+      descriptionEn: descEnEl ? descEnEl.value.trim() : '',
       dedupMode: document.getElementById('f-dedup').value,
       resultPolicy: document.getElementById('f-policy').value,
       closeInDays: isNaN(closeDays) ? null : closeDays,

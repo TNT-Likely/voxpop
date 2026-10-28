@@ -299,9 +299,9 @@
     ctx.fillStyle = accentInk;
     ctx.fillText(stat, M + 52 + 28, y + 16);
 
-    // 二维码卡片
+    // 二维码卡片（中心放三竖条 logo，纠错级别 H 保证可扫）
     var qrSize = 380, qx = (W - qrSize) / 2, qy = H - M - 120 - 96 - qrSize;
-    var qr = window.qrcode(0, 'M');
+    var qr = window.qrcode(0, 'H');
     qr.addData(data.poll.link);
     qr.make();
     var count = qr.getModuleCount();
@@ -317,6 +317,22 @@
         }
       }
     }
+    // 中心三竖条 logo
+    var lw2 = 92, lx2 = W / 2 - lw2 / 2, ly2 = qy + qrSize / 2 - lw2 / 2;
+    rr(ctx, lx2, ly2, lw2, lw2, 24);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    var barSpecs = [{ h: 28, o: 0.65 }, { h: 40, o: 0.85 }, { h: 54, o: 1 }];
+    var barW = 13, barGap = 9;
+    var totalBarW = barSpecs.length * barW + (barSpecs.length - 1) * barGap;
+    var bx = W / 2 - totalBarW / 2;
+    var baseY = ly2 + lw2 - 20;
+    barSpecs.forEach(function (b) {
+      rr(ctx, bx, baseY - b.h, barW, b.h, 6.5);
+      ctx.fillStyle = 'rgba(76,59,5,' + b.o + ')';
+      ctx.fill();
+      bx += barW + barGap;
+    });
     ctx.fillStyle = muted;
     ctx.font = '500 34px ' + font;
     ctx.textAlign = 'center';
@@ -344,6 +360,88 @@
 
   /* ---------- 级联 ---------- */
   function buildCascade(q, opts, state) {
+    // 精确指针（桌面）用自绘下拉，触屏保留原生选择器（系统体验更好）
+    var fine = window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches;
+    return fine ? cascadeDropdown(q, opts, state) : cascadeSelect(q, opts, state);
+  }
+
+  function cascadeDropdown(q, opts, state) {
+    var byParent = {};
+    var byId = {};
+    opts.forEach(function (o) {
+      byId[o.id] = o;
+      var key = o.parentId || '';
+      (byParent[key] = byParent[key] || []).push(o);
+    });
+    var holder = el('div', 'vp-cascade');
+    var dds = [];
+    var chosen = null;
+    function closeAll(except) {
+      dds.forEach(function (d) {
+        if (d !== except) {
+          d.panel.style.display = 'none';
+          d.wrap.classList.remove('open');
+          d.btn.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+    document.addEventListener('click', function (e) {
+      if (!holder.contains(e.target)) closeAll();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeAll();
+    });
+    function makeDD(depth, parentId) {
+      var list = byParent[parentId] || [];
+      if (!list.length) return;
+      var wrap = el('div', 'dd');
+      var btn = el('button', 'dd-btn', depth === 0 ? T('selectLevel') : T('selectNext'));
+      btn.type = 'button';
+      btn.setAttribute('aria-haspopup', 'listbox');
+      btn.setAttribute('aria-expanded', 'false');
+      var panel = el('ul', 'dd-panel');
+      panel.style.display = 'none';
+      list.forEach(function (o) {
+        var li = el('li', 'dd-item', o.label);
+        li.setAttribute('role', 'option');
+        li.addEventListener('click', function () {
+          dds = dds.filter(function (d) {
+            if (d.depth > depth) { d.wrap.remove(); return false; }
+            return true;
+          });
+          btn.textContent = o.label;
+          chosen = null;
+          var hasChildren = (byParent[o.id] || []).length > 0;
+          if (hasChildren) {
+            makeDD(depth + 1, o.id);
+          } else {
+            chosen = o.id; // 必须选到叶子
+            closeAll();
+          }
+          state[q.id] = chosen ? { optionIds: [chosen] } : undefined;
+        });
+        panel.appendChild(li);
+      });
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = panel.style.display !== 'none';
+        closeAll();
+        if (!open) {
+          panel.style.display = 'block';
+          wrap.classList.add('open');
+          btn.setAttribute('aria-expanded', 'true');
+        }
+      });
+      wrap.appendChild(btn);
+      wrap.appendChild(panel);
+      holder.appendChild(wrap);
+      dds.push({ wrap: wrap, panel: panel, btn: btn, depth: depth });
+    }
+    makeDD(0, '');
+    return holder;
+  }
+
+  function cascadeSelect(q, opts, state) {
     var byParent = {};
     var byId = {};
     opts.forEach(function (o) {
@@ -535,6 +633,38 @@
     });
   }
 
+  /* ---------- 结果自动刷新（30s，仅结果页且页面可见时） ---------- */
+  function initRefresh(data) {
+    var root = document.getElementById('vp-root');
+    if (!root || !data.poll) return;
+    var on = false;
+    try { on = localStorage.getItem('vp_ar') === '1'; } catch (e) { /* ignore */ }
+    var bar = el('div', 'vp-refresh-bar');
+    var b = el('button', 'vp-btn ghost small');
+    b.type = 'button';
+    function paint() { b.textContent = T('autoRefresh') + ' · ' + (on ? 'ON' : 'OFF'); }
+    b.addEventListener('click', function () {
+      on = !on;
+      try { localStorage.setItem('vp_ar', on ? '1' : '0'); } catch (e) { /* ignore */ }
+      paint();
+    });
+    paint();
+    setInterval(function () {
+      if (!on || document.visibilityState !== 'visible') return;
+      fetch('/api/polls/' + data.poll.id + '/results')
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.questions) {
+            currentData.results = j;
+            renderResults(j, root);
+          }
+        })
+        .catch(function () { /* 静默 */ });
+    }, 30000);
+    root.insertAdjacentElement('afterend', bar);
+    bar.appendChild(b);
+  }
+
   /* ---------- 嵌入自适应 ---------- */
   function postHeight() {
     if (window.parent === window) return;
@@ -558,6 +688,15 @@
       }
     }
   }
+  if (currentData && currentData.mode === 'results') initRefresh(currentData);
   window.addEventListener('load', postHeight);
-  setInterval(postHeight, 800);
+  if (window.ResizeObserver) {
+    try {
+      new ResizeObserver(postHeight).observe(document.body);
+    } catch (e) {
+      setInterval(postHeight, 800);
+    }
+  } else {
+    setInterval(postHeight, 800);
+  }
 })();

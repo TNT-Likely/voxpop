@@ -1,13 +1,15 @@
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import type { Env } from '../types';
-import { cleanDim, isClosed } from '../lib/util';
+import { cleanDim, hmacHex, isClosed } from '../lib/util';
 import {
-  buildResults, getOptionsByQuestionIds, getPoll, getQuestions, hasResponded, insertEvent, respondToPoll,
+  buildResults, countRecentByCreator, createPoll, getOptionsByQuestionIds, getPoll, getQuestions,
+  hasResponded, insertEvent, respondToPoll,
 } from '../lib/db';
 import { ensureVid, voterHash } from '../lib/identity';
 import { verifyTurnstile } from '../lib/turnstile';
 import { validateAnswers } from '../lib/validate';
+import { parsePollInput } from '../lib/parse';
 
 export const api = new Hono<{ Bindings: Env }>();
 
@@ -144,4 +146,46 @@ api.post('/api/t', async (c) => {
     extra,
   });
   return c.body(null, 204);
+});
+
+// 自助建票：Turnstile + 每 IP 每日限额 + 默认不收录（unlisted）
+const PUBLIC_DAILY_LIMIT = 5;
+
+api.post('/api/public/polls', async (c) => {
+  const ip = c.req.header('CF-Connecting-IP') ?? '0.0.0.0';
+  if (c.env.RL) {
+    try {
+      const rl = await c.env.RL.limit({ key: 'public-create:' + ip });
+      if (!rl.success) return c.json({ error: 'too_many_requests' }, 429);
+    } catch {
+      // 限流不可用时仍有每日限额兜底
+    }
+  }
+
+  const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+  if (!body) return c.json({ error: 'bad_request' }, 400);
+
+  if (c.env.TURNSTILE_SECRET_KEY) {
+    const token = typeof body.turnstileToken === 'string' ? body.turnstileToken : '';
+    if (!(await verifyTurnstile(c.env.TURNSTILE_SECRET_KEY, token, ip))) {
+      return c.json({ error: 'captcha_failed' }, 400);
+    }
+  }
+
+  const creatorHash = await hmacHex(c.env.SERVER_SALT, 'creator|' + ip);
+  if ((await countRecentByCreator(c.env.DB, creatorHash)) >= PUBLIC_DAILY_LIMIT) {
+    return c.json({ error: 'daily_limit' }, 429);
+  }
+
+  const parsed = parsePollInput(body, { allowExtraKeys: false });
+  if (parsed.error || !parsed.input) return c.json({ error: parsed.error ?? 'bad_request' }, 400);
+  parsed.input.visibility = 'unlisted';
+  parsed.input.creatorHash = creatorHash;
+
+  try {
+    const id = await createPoll(c.env.DB, parsed.input);
+    return c.json({ ok: true, id });
+  } catch {
+    return c.json({ error: 'level_too_deep' }, 400);
+  }
 });

@@ -8,12 +8,12 @@ export async function getPoll(db: D1Database, id: string): Promise<PollRow | nul
   return row ?? null;
 }
 
-/** 状态为 open 且未到截止时间的问卷（首页列表用） */
+/** 状态为 open 且未到截止时间且已收录的问卷（首页列表用） */
 export async function listOpenPolls(db: D1Database): Promise<(PollRow & { response_count: number })[]> {
   const { results } = await db.prepare(
     `SELECT p.*, (SELECT COUNT(*) FROM responses r WHERE r.poll_id = p.id) AS response_count
      FROM polls p
-     WHERE p.status = 'open' AND (p.close_at IS NULL OR p.close_at > ?)
+     WHERE p.status = 'open' AND p.visibility = 'listed' AND (p.close_at IS NULL OR p.close_at > ?)
      ORDER BY p.created_at DESC LIMIT 50`
   ).bind(nowSec()).all();
   return (results ?? []) as unknown as (PollRow & { response_count: number })[];
@@ -64,9 +64,9 @@ export async function createPoll(db: D1Database, input: PollInput): Promise<stri
   const ts = nowSec();
   const stmts: D1PreparedStatement[] = [];
   stmts.push(db.prepare(
-    `INSERT INTO polls (id, title, description, dedup_mode, result_policy, status, close_at, extra_keys, created_at)
-     VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?)`
-  ).bind(pollId, input.title, input.description, input.dedupMode, input.resultPolicy, input.closeAt, input.extraKeys, ts));
+    `INSERT INTO polls (id, title, description, dedup_mode, result_policy, status, close_at, extra_keys, accent, visibility, creator_hash, created_at)
+     VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`
+  ).bind(pollId, input.title, input.description, input.dedupMode, input.resultPolicy, input.closeAt, input.extraKeys, input.accent, input.visibility, input.creatorHash, ts));
 
   let sort = 0;
   for (const q of input.questions) {
@@ -97,6 +97,23 @@ export async function setPollStatus(db: D1Database, id: string, status: 'open' |
   await db.prepare(
     'UPDATE polls SET status = ?, closed_at = ? WHERE id = ?'
   ).bind(status, status === 'closed' ? nowSec() : null, id).run();
+}
+
+export async function setPollVisibility(db: D1Database, id: string, visibility: 'listed' | 'unlisted'): Promise<void> {
+  await db.prepare('UPDATE polls SET visibility = ? WHERE id = ?').bind(visibility, id).run();
+}
+
+export async function setPollAccent(db: D1Database, id: string, accent: string): Promise<void> {
+  await db.prepare('UPDATE polls SET accent = ? WHERE id = ?').bind(accent, id).run();
+}
+
+/** 自助建票限流：某创建者指纹当天已创建的问卷数 */
+export async function countRecentByCreator(db: D1Database, creatorHash: string): Promise<number> {
+  const dayStart = utcDayStartSec(0);
+  const row = await db.prepare(
+    'SELECT COUNT(*) AS n FROM polls WHERE creator_hash = ? AND created_at >= ?'
+  ).bind(creatorHash, dayStart).first<{ n: number }>();
+  return row?.n ?? 0;
 }
 
 export async function deletePoll(db: D1Database, id: string): Promise<void> {

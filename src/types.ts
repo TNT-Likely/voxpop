@@ -22,6 +22,9 @@ export interface PollRow {
   status: 'draft' | 'open' | 'closed';
   close_at: number | null;
   extra_keys: string;
+  accent: string;
+  visibility: 'listed' | 'unlisted';
+  creator_hash: string;
   created_at: number;
   closed_at: number | null;
 }
@@ -66,6 +69,9 @@ export interface PollInput {
   resultPolicy: ResultPolicy;
   closeAt: number | null;
   extraKeys: string;
+  accent: string;
+  visibility: 'listed' | 'unlisted';
+  creatorHash: string;
   questions: {
     type: QuestionType;
     title: string;

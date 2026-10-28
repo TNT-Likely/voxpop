@@ -4,8 +4,6 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/TNT-Likely/voxpop)
 
-设计文档（中文）：[docs/plan.md](docs/plan.md)
-
 ## 特性
 
 - **四种题型**：单选 / 多选 / 级联选择（≤3 层）/ 文本输入
@@ -17,6 +15,7 @@
 - **三端适配**：移动端 / iPad / PC
 - **二维码分享海报**：结果页一键生成带二维码的分享图
 - **自助建卷**：`/new` 公开页创建（Turnstile + 每设备每日 5 份限额，默认不收录，管理员可收录）
+- **App 发现接口**：`/api/app/polls?app=&channel=`，应用 × 渠道双维定向（自定义标签，如 `appstore` / `ipa` / `apk` / `googleplay`），供 App 内投票横幅使用
 - **一行代码嵌入**：`embed.js` iframe 自适应高度
 - **零成本**：Workers + D1 + Turnstile 全部落在 Cloudflare 免费额度内，无需 VPS
 - **隐私友好**：不存原始 IP / UA，只有 HMAC 摘要与枚举，无 PII
@@ -105,7 +104,7 @@ Cloudflare Workers（Hono + TypeScript SSR + Static Assets）· D1（SQLite）·
 - Lightweight privacy-friendly analytics: PV/UV, country, device, browser, OS, custom dimensions passed from your app via URL params (whitelisted per poll)
 - Embed anywhere with one `<script>` tag (npm: `voxpop-embed`); shared-key admin UI with Chart.js dashboards; daily event rollup via Cron Triggers; MIT licensed
 
-Deploy: click the button above, or clone → `npm install` → `npx wrangler d1 create voxpop` (fill `database_id` in wrangler.jsonc) → `npx wrangler secret put ADMIN_KEY` / `SERVER_SALT` → `npm run db:remote` → `npm run deploy`. Admin UI at `/admin`. Optional Turnstile hardening in 3 steps (see above). Full design doc: [docs/plan.md](docs/plan.md) (Chinese).
+Deploy: click the button above, or clone → `npm install` → `npx wrangler d1 create voxpop` (fill `database_id` in wrangler.jsonc) → `npx wrangler secret put ADMIN_KEY` / `SERVER_SALT` → `npm run db:remote` → `npm run deploy`. Admin UI at `/admin`. Optional Turnstile hardening in 3 steps (see above).
 
 ## License
 

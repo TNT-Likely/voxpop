@@ -32,11 +32,17 @@
   "vars": {
     "SAMPLE_RATE": "1.0"
   },
+  "triggers": {
+    // 每日 03:17 UTC 聚合 events -> event_daily 并清理 180 天前明细
+    "crons": ["17 3 * * *"]
+  },
   "observability": {
     "enabled": true
   }
   // 密钥用 `npx wrangler secret put` 配置：ADMIN_KEY、SERVER_SALT
-  // 可选：TURNSTILE_SECRET_KEY（配置后自动启用投票人机校验），站点 key 填到下面 vars
+  // Turnstile（可选）：Dashboard -> Turnstile 免费创建站点（域名填本站两个入口），
+  //   然后 `npx wrangler secret put TURNSTILE_SECRET_KEY`，
+  //   并把 "TURNSTILE_SITE_KEY": "0x..." 加进上面 vars（未配置即不启用校验）
   // "vars" 里可加 "TURNSTILE_SITE_KEY": "0x..."
   // 自定义域名（免费）：dashboard 绑定，如 voxpop.beejz.com
 }

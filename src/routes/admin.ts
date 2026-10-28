@@ -9,7 +9,7 @@ import { parsePollInput } from '../lib/parse';
 import { runDailyRollup } from '../lib/cron';
 import {
   adminListPolls, buildResults, createPoll, deletePoll, exportPoll, getDailySeries, getPoll,
-  getPollPageviews, setPollAccent, setPollStatus, setPollVisibility,
+  getPollPageviews, setPollApps, setPollChannels, setPollStatus, setPollVisibility, setPollAccent,
 } from '../lib/db';
 import type { DailyPoint, ResultsPayload } from '../lib/db';
 import { localeOf, newPollFormBody } from './pages';
@@ -130,7 +130,7 @@ admin.post('/admin/polls/:id/unlist', async (c) => {
   return c.redirect('/admin');
 });
 
-admin.post('/admin/polls/:id/accent', async (c) => {
+admin.post('/admin/polls/:id/meta', async (c) => {
   if (await adminGuard(c)) return c.redirect('/admin');
   const form = await c.req.parseBody();
   const accent = String(form['accent'] ?? '').replace('#', '');
@@ -139,8 +139,21 @@ admin.post('/admin/polls/:id/accent', async (c) => {
   } else if (accent === '') {
     await setPollAccent(c.env.DB, c.req.param('id'), '');
   }
+  await setPollChannels(c.env.DB, c.req.param('id'), sanitizeTags(String(form['channels'] ?? '')));
+  await setPollApps(c.env.DB, c.req.param('id'), sanitizeTags(String(form['apps'] ?? '')));
   return c.redirect(`/admin/p/${c.req.param('id')}`);
 });
+
+function sanitizeTags(input: string): string {
+  return input
+    .split(/[,，\s]+/)
+    .filter(Boolean)
+    .map((tag) => tag.toLowerCase())
+    .filter((tag) => /^[a-z0-9_-]{1,32}$/.test(tag))
+    .filter((tag, i, arr) => arr.indexOf(tag) === i)
+    .slice(0, 8)
+    .join(',');
+}
 
 admin.get('/admin/polls/:id/export', async (c) => {
   if (!(await isAdmin(c))) return c.json({ error: 'unauthorized' }, 401);
@@ -272,7 +285,7 @@ function detailHtml(
     <h1 class="vp-title">${esc(poll.title)}</h1>
     <span class="vp-badge ${closed ? 'off' : 'on'}">${esc(badge)}</span>
   </div>
-  <p class="vp-meta">ID <code>${poll.id}</code> · ${esc(t(loc, 'thCreated'))} ${fmtDate(poll.created_at)}${poll.close_at ? ` · ${esc(t(loc, 'closingOn', { date: fmtDate(poll.close_at) }))}` : ''} · ${esc(t(loc, poll.visibility === 'listed' ? 'listedBadge' : 'unlistedBadge'))}${poll.extra_keys ? ` · ${esc(poll.extra_keys)}` : ''}</p>
+  <p class="vp-meta">ID <code>${poll.id}</code> · ${esc(t(loc, 'thCreated'))} ${fmtDate(poll.created_at)}${poll.close_at ? ` · ${esc(t(loc, 'closingOn', { date: fmtDate(poll.close_at) }))}` : ''} · ${esc(t(loc, poll.visibility === 'listed' ? 'listedBadge' : 'unlistedBadge'))}${poll.apps ? ` · app: ${esc(poll.apps)}` : ''}${poll.channels ? ` · ${esc(t(loc, 'channelsLabel'))}: ${esc(poll.channels)}` : ''}${poll.extra_keys ? ` · ${esc(poll.extra_keys)}` : ''}</p>
   <div class="vp-admin-actions">
     <a class="vp-btn ghost" href="/p/${poll.id}" target="_blank" rel="noopener">${esc(t(loc, 'viewPage'))}</a>
     <a class="vp-btn ghost" href="/admin/polls/${poll.id}/export">${esc(t(loc, 'exportJson'))}</a>
@@ -282,13 +295,21 @@ function detailHtml(
   </div>
   <div class="vp-field-row">
     <div class="vp-field" style="flex:2 1 260px"><label>${esc(t(loc, 'publicLink'))}</label><input readonly value="${esc(link)}" onclick="this.select()"></div>
-    <div class="vp-field"><label>${esc(t(loc, 'accentLabel'))}</label>
-      <form method="post" action="/admin/polls/${poll.id}/accent" class="inline vp-accent-form">
-        <input type="color" name="accent" value="${esc(poll.accent || '#f8c91c')}">
-        <button class="vp-btn ghost small">${esc(t(loc, 'setAccent'))}</button>
-      </form>
-    </div>
   </div>
+  <form method="post" action="/admin/polls/${poll.id}/meta" class="vp-meta-form">
+    <div class="vp-field-row">
+      <div class="vp-field" style="flex:0 1 140px"><label>${esc(t(loc, 'accentLabel'))}</label>
+        <input type="color" name="accent" value="${esc(poll.accent || '#f8c91c')}">
+      </div>
+      <div class="vp-field" style="flex:1 1 200px"><label>${esc(t(loc, 'channelsLabel'))}</label>
+        <input name="channels" value="${esc(poll.channels)}" placeholder="appstore, ipa, apk, googleplay">
+      </div>
+      <div class="vp-field" style="flex:1 1 200px"><label>${esc(t(loc, 'appsLabel'))}</label>
+        <input name="apps" value="${esc(poll.apps)}" placeholder="beecount, panwatch">
+      </div>
+      <div class="vp-field" style="flex:0 0 auto; align-self: flex-end;"><button class="vp-btn ghost small">${esc(t(loc, 'setAccent'))}</button></div>
+    </div>
+  </form>
   <div class="vp-field"><label>${esc(t(loc, 'embedCode'))}</label><textarea readonly rows="3" onclick="this.select()">${esc(embedCode)}</textarea></div>
   <h2 class="vp-section">${esc(t(loc, 'resultsTitle', { n: results.total, m: pv }))}</h2>
   ${qs || `<p class="vp-muted">${esc(t(loc, 'noResponses'))}</p>`}

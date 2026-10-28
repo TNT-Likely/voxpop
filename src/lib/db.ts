@@ -64,9 +64,9 @@ export async function createPoll(db: D1Database, input: PollInput): Promise<stri
   const ts = nowSec();
   const stmts: D1PreparedStatement[] = [];
   stmts.push(db.prepare(
-    `INSERT INTO polls (id, title, description, dedup_mode, result_policy, status, close_at, extra_keys, accent, visibility, creator_hash, created_at)
-     VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)`
-  ).bind(pollId, input.title, input.description, input.dedupMode, input.resultPolicy, input.closeAt, input.extraKeys, input.accent, input.visibility, input.creatorHash, ts));
+    `INSERT INTO polls (id, title, description, dedup_mode, result_policy, status, close_at, extra_keys, accent, visibility, creator_hash, channels, apps, created_at)
+     VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(pollId, input.title, input.description, input.dedupMode, input.resultPolicy, input.closeAt, input.extraKeys, input.accent, input.visibility, input.creatorHash, input.channels, input.apps, ts));
 
   let sort = 0;
   for (const q of input.questions) {
@@ -107,6 +107,14 @@ export async function setPollAccent(db: D1Database, id: string, accent: string):
   await db.prepare('UPDATE polls SET accent = ? WHERE id = ?').bind(accent, id).run();
 }
 
+export async function setPollChannels(db: D1Database, id: string, channels: string): Promise<void> {
+  await db.prepare('UPDATE polls SET channels = ? WHERE id = ?').bind(channels, id).run();
+}
+
+export async function setPollApps(db: D1Database, id: string, apps: string): Promise<void> {
+  await db.prepare('UPDATE polls SET apps = ? WHERE id = ?').bind(apps, id).run();
+}
+
 /** 自助建票限流：某创建者指纹当天已创建的问卷数 */
 export async function countRecentByCreator(db: D1Database, creatorHash: string): Promise<number> {
   const dayStart = utcDayStartSec(0);
@@ -114,6 +122,33 @@ export async function countRecentByCreator(db: D1Database, creatorHash: string):
     'SELECT COUNT(*) AS n FROM polls WHERE creator_hash = ? AND created_at >= ?'
   ).bind(creatorHash, dayStart).first<{ n: number }>();
   return row?.n ?? 0;
+}
+
+export interface AppFeedPoll {
+  id: string;
+  title: string;
+  description: string;
+  close_at: number | null;
+  accent: string;
+}
+
+/**
+ * App 发现接口的数据查询：状态 open、未到截止；
+ * 应用与渠道双维匹配（空标签 = 通配）；已收录问卷始终可见，
+ * 未收录问卷必须显式定向了应用或渠道（App 专属问卷）。
+ */
+export async function listForAppFeed(db: D1Database, app: string, channel: string): Promise<AppFeedPoll[]> {
+  const { results } = await db.prepare(
+    `SELECT p.id, p.title, p.description, p.close_at, p.accent
+     FROM polls p
+     WHERE p.status = 'open'
+       AND (p.close_at IS NULL OR p.close_at > ?)
+       AND (p.apps = '' OR instr(',' || p.apps || ',', ',' || ? || ',') > 0)
+       AND (p.channels = '' OR instr(',' || p.channels || ',', ',' || ? || ',') > 0)
+       AND (p.visibility = 'listed' OR p.channels != '' OR p.apps != '')
+     ORDER BY p.created_at DESC LIMIT 10`
+  ).bind(nowSec(), app, channel).all();
+  return (results ?? []) as unknown as AppFeedPoll[];
 }
 
 export async function deletePoll(db: D1Database, id: string): Promise<void> {

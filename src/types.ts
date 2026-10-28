@@ -25,6 +25,8 @@ export interface PollRow {
   accent: string;
   visibility: 'listed' | 'unlisted';
   creator_hash: string;
+  channels: string;
+  apps: string;
   created_at: number;
   closed_at: number | null;
 }
@@ -72,6 +74,8 @@ export interface PollInput {
   accent: string;
   visibility: 'listed' | 'unlisted';
   creatorHash: string;
+  channels: string;
+  apps: string;
   questions: {
     type: QuestionType;
     title: string;

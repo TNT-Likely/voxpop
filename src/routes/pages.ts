@@ -143,7 +143,10 @@ export function newPollFormBody(loc: Locale, isAdmin: boolean): string {
     <div class="vp-field"><label>${esc(t(loc, 'closeDaysLabel'))}</label><input id="f-close-days" type="number" min="1" max="365"></div>
     <div class="vp-field"><label>${esc(t(loc, 'accentCreateLabel'))}</label><input id="f-accent" maxlength="7" placeholder="#f8c91c"></div>
   </div>
-  ${isAdmin ? `<div class="vp-field"><label>${esc(t(loc, 'extraKeysLabel'))}</label><input id="f-extra-keys" maxlength="200" placeholder="src,app_ver,platform"></div>` : ''}
+  ${isAdmin ? `
+  <div class="vp-field"><label>${esc(t(loc, 'extraKeysLabel'))}</label><input id="f-extra-keys" maxlength="200" placeholder="src,app_ver,platform"></div>
+  <div class="vp-field"><label>${esc(t(loc, 'appsLabel'))}</label><input id="f-apps" maxlength="200" placeholder="beecount, panwatch"></div>
+  <div class="vp-field"><label>${esc(t(loc, 'channelsLabel'))}</label><input id="f-channels" maxlength="200" placeholder="appstore, ipa, apk, googleplay"></div>` : ''}
   <h2 class="vp-section">${esc(t(loc, 'questionsTitle'))}</h2>
   <div id="vp-questions"></div>
   <button type="button" id="vp-add-question" class="vp-btn ghost">${esc(t(loc, 'addQuestion'))}</button>

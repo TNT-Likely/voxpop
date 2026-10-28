@@ -109,8 +109,16 @@ export const DICT: Record<string, Entry> = {
   embedCode: { zh: '嵌入代码', en: 'Embed code' },
   noResponses: { zh: '还没有答卷', en: 'No responses yet' },
   noData: { zh: '暂无数据', en: 'No data' },
-  setAccent: { zh: '保存主题色', en: 'Save accent' },
+  setAccent: { zh: '保存', en: 'Save' },
   accentLabel: { zh: '主题色（影响该问卷页面与海报）', en: 'Accent color (poll page & poster)' },
+  channelsLabel: {
+    zh: '渠道定向（逗号分隔自定义渠道，留空 = 全渠道）',
+    en: 'Channel targeting (comma separated, blank = all channels)',
+  },
+  appsLabel: {
+    zh: '应用定向（逗号分隔自定义应用，留空 = 全部应用）',
+    en: 'App targeting (comma separated, blank = all apps)',
+  },
 
   // 新建问卷表单
   createTitle: { zh: '新建问卷', en: 'Create a poll' },

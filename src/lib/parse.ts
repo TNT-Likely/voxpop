@@ -8,6 +8,20 @@ export interface ParseOptions {
   allowExtraKeys?: boolean;
 }
 
+/** 应用/渠道标签规则：开源友好——任意小写标签，部署方自定义 */
+const TAG_RE = /^[a-z0-9_-]{1,32}$/;
+
+function parseTags(raw: unknown): string {
+  return (typeof raw === 'string' ? raw : '')
+    .split(/[,，\s]+/)
+    .filter(Boolean)
+    .map((tag) => tag.toLowerCase())
+    .filter((tag) => TAG_RE.test(tag))
+    .filter((tag, i, arr) => arr.indexOf(tag) === i)
+    .slice(0, 8)
+    .join(',');
+}
+
 /**
  * 解析创建问卷的 JSON 输入（后台与自助建票共用）。
  * 错误返回稳定错误码，由前端按语言映射文案。
@@ -45,6 +59,8 @@ export function parsePollInput(
 
   const visibility = raw.visibility === 'unlisted' ? 'unlisted' : 'listed';
   const creatorHash = s(raw.creatorHash).slice(0, 64);
+  const channels = parseTags(raw.channels);
+  const apps = parseTags(raw.apps);
 
   const rawQuestions = Array.isArray(raw.questions) ? raw.questions : [];
   const maxQuestions = opts.maxQuestions ?? 20;
@@ -74,6 +90,6 @@ export function parsePollInput(
     questions.push({ type, title: qTitle, required, maxChoices, maxLen, parsedOptions });
   }
   return {
-    input: { title, description, dedupMode, resultPolicy, closeAt, extraKeys, accent, visibility, creatorHash, questions },
+    input: { title, description, dedupMode, resultPolicy, closeAt, extraKeys, accent, visibility, creatorHash, channels, apps, questions },
   };
 }

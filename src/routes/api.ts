@@ -4,7 +4,7 @@ import type { Env } from '../types';
 import { cleanDim, hmacHex, isClosed } from '../lib/util';
 import {
   buildResults, countRecentByCreator, createPoll, getOptionsByQuestionIds, getPoll, getQuestions,
-  hasResponded, insertEvent, respondToPoll,
+  hasResponded, insertEvent, listForAppFeed, respondToPoll,
 } from '../lib/db';
 import { ensureVid, voterHash } from '../lib/identity';
 import { verifyTurnstile } from '../lib/turnstile';
@@ -188,4 +188,33 @@ api.post('/api/public/polls', async (c) => {
   } catch {
     return c.json({ error: 'level_too_deep' }, 400);
   }
+});
+
+// App 发现接口：按 应用×渠道 拉取进行中的投票（供 App 内提示横幅使用）
+// app / channel 均为部署方自定义标签（BeeCount 预设渠道：appstore / ipa / apk / googleplay）
+api.get('/api/app/polls', async (c) => {
+  const app = (c.req.query('app') ?? '').trim().toLowerCase();
+  const channel = (c.req.query('channel') ?? '').trim().toLowerCase();
+  if ((app && !/^[a-z0-9_-]{1,32}$/.test(app)) || (channel && !/^[a-z0-9_-]{1,32}$/.test(channel))) {
+    return c.json({ error: 'bad_request' }, 400);
+  }
+  const rows = await listForAppFeed(c.env.DB, app, channel);
+  const origin = new URL(c.req.url).origin;
+  const polls = rows.map((p) => {
+    let url = `${origin}/p/${p.id}?src=app`;
+    if (app) url += '&app=' + encodeURIComponent(app);
+    if (channel) url += '&channel=' + encodeURIComponent(channel);
+    if (p.accent) url += '&accent=' + p.accent.replace('#', '');
+    return {
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      url,
+      closeAt: p.close_at ?? undefined,
+      accent: p.accent || undefined,
+    };
+  });
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Cache-Control', 'public, max-age=60');
+  return c.json({ app: app || undefined, channel: channel || undefined, polls });
 });

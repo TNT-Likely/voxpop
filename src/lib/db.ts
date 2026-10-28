@@ -185,6 +185,64 @@ export async function listForAppFeed(db: D1Database, app: string, channel: strin
   return (results ?? []) as unknown as AppFeedPoll[];
 }
 
+export interface CrossRow { label: string; counts: Record<string, number>; total: number }
+export interface CrossQuestion { id: string; title: string; rows: CrossRow[] }
+export interface CrossAnalysis { cross: CrossQuestion[]; extraDist: Record<string, Record<string, number>> }
+
+/** 交叉分析：选项 × 设备 + 自定义维度（extra JSON）分布 */
+export async function getCrossAnalysis(db: D1Database, poll: PollRow): Promise<CrossAnalysis> {
+  const questions = await getQuestions(db, poll.id);
+  const optionsMap = await getOptionsByQuestionIds(db, questions.map((q) => q.id));
+  const choice = questions.filter((q) => q.type !== 'text');
+  const { results } = await db.prepare(
+    `SELECT a.question_id AS qid, a.option_id AS oid, r.device AS device, COUNT(*) AS c
+     FROM answers a JOIN responses r ON r.id = a.response_id
+     WHERE r.poll_id = ? AND a.option_id IS NOT NULL
+     GROUP BY a.question_id, a.option_id, r.device`
+  ).bind(poll.id).all();
+  const perQ = new Map<string, Map<string, Map<string, number>>>();
+  for (const row of (results ?? []) as unknown as { qid: string; oid: string; device: string; c: number }[]) {
+    const qm = perQ.get(row.qid) ?? new Map();
+    const dm = qm.get(row.oid) ?? new Map();
+    const key = row.device || 'unknown';
+    dm.set(key, (dm.get(key) ?? 0) + row.c);
+    qm.set(row.oid, dm);
+    perQ.set(row.qid, qm);
+  }
+  const cross: CrossQuestion[] = choice.map((q) => {
+    const opts = optionsMap.get(q.id) ?? [];
+    const qm = perQ.get(q.id) ?? new Map();
+    const rows: CrossRow[] = opts.map((o) => {
+      const dm = qm.get(o.id) ?? new Map();
+      let total = 0;
+      const counts: Record<string, number> = {};
+      for (const [d, c] of dm) {
+        counts[d] = c;
+        total += c;
+      }
+      return { label: o.label, counts, total };
+    }).filter((r) => r.total > 0);
+    return { id: q.id, title: q.title, rows };
+  }).filter((x) => x.rows.length);
+
+  const extraDist: Record<string, Record<string, number>> = {};
+  const { results: extraRows } = await db.prepare(
+    `SELECT extra, COUNT(*) AS c FROM events WHERE poll_id = ? AND extra != '{}' GROUP BY extra LIMIT 500`
+  ).bind(poll.id).all();
+  for (const row of (extraRows ?? []) as unknown as { extra: string; c: number }[]) {
+    try {
+      const obj = JSON.parse(row.extra) as Record<string, string>;
+      for (const [k, v] of Object.entries(obj)) {
+        extraDist[k] = extraDist[k] ?? {};
+        extraDist[k][v] = (extraDist[k][v] ?? 0) + row.c;
+      }
+    } catch {
+      // 跳过非法 JSON
+    }
+  }
+  return { cross, extraDist };
+}
+
 /** CSV 导出：答卷长表（一行一答案），UTF-8 BOM 便于 Excel 直接打开 */
 export async function exportPollCsv(db: D1Database, pollId: string): Promise<string | null> {
   const poll = await getPoll(db, pollId);

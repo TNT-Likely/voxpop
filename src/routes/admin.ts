@@ -9,10 +9,11 @@ import { parsePollInput } from '../lib/parse';
 import { runDailyRollup } from '../lib/cron';
 import {
   addRegistry, adminListPolls, buildResults, createPoll, deletePoll, deleteRegistry, exportPoll,
-  exportPollCsv, getDailySeries, getPoll, getPollPageviews, listRegistry, registryNameMaps,
-  setPollApps, setPollChannels, setPollStatus, setPollTitleEn, setPollVisibility, setPollAccent,
+  exportPollCsv, getCrossAnalysis, getDailySeries, getPoll, getPollPageviews, listRegistry,
+  registryNameMaps, setPollApps, setPollChannels, setPollStatus, setPollTitleEn,
+  setPollVisibility, setPollAccent,
 } from '../lib/db';
-import type { DailyPoint, RegistryEntry, ResultsPayload } from '../lib/db';
+import type { CrossAnalysis, DailyPoint, RegistryEntry, ResultsPayload } from '../lib/db';
 import { localeOf, newPollFormBody } from './pages';
 
 export const admin = new Hono<{ Bindings: Env }>();
@@ -277,16 +278,17 @@ admin.get('/admin/p/:id', async (c) => {
   const poll = await getPoll(c.env.DB, c.req.param('id'));
   if (!poll) return c.html(layout({ title: '404 · 众声 VoxPop', body: notFoundBody(loc), locale: loc, path: c.req.path }), 404);
   const results = await buildResults(c.env.DB, poll, true);
-  const [trend, pv, reg, regLists] = await Promise.all([
+  const [trend, pv, reg, regLists, crossData] = await Promise.all([
     getDailySeries(c.env.DB, poll.id),
     getPollPageviews(c.env.DB, poll.id),
     registryNameMaps(c.env.DB),
     Promise.all([listRegistry(c.env.DB, 'app'), listRegistry(c.env.DB, 'channel')]).then(([apps, channels]) => ({ apps, channels })),
+    getCrossAnalysis(c.env.DB, poll),
   ]);
   const origin = new URL(c.req.url).origin;
   return c.html(layout({
     title: `${t(loc, 'resultsTitle', { n: results.total, m: pv })} · 众声 VoxPop`,
-    body: detailHtml(loc, poll, results, origin, trend, pv, reg, regLists),
+    body: detailHtml(loc, poll, results, origin, trend, pv, reg, regLists, crossData),
     locale: loc,
     path: c.req.path,
     accent: poll.accent,
@@ -309,7 +311,8 @@ function detailHtml(
   trend: DailyPoint[],
   pv: number,
   reg: { apps: Map<string, string>; channels: Map<string, string> },
-  regLists: { apps: RegistryEntry[]; channels: RegistryEntry[] }
+  regLists: { apps: RegistryEntry[]; channels: RegistryEntry[] },
+  crossData: CrossAnalysis
 ): string {
   const regApps = regLists.apps;
   const regChannels = regLists.channels;
@@ -420,7 +423,33 @@ function detailHtml(
   <h2 class="vp-section">${esc(t(loc, 'composition'))}</h2>
   ${bd || `<p class="vp-muted">${esc(t(loc, 'noData'))}</p>`}
   ${charts}
+  ${crossSection(loc, crossData)}
   <p class="vp-muted" style="margin-top:24px"><a href="/admin">← ${esc(t(loc, 'backToList'))}</a></p>`;
+}
+
+function crossSection(loc: Parameters<typeof t>[0], data: CrossAnalysis): string {
+  const hasCross = data.cross.length > 0;
+  const extraKeys = Object.keys(data.extraDist);
+  if (!hasCross && extraKeys.length === 0) return '';
+  let html = `<h2 class="vp-section">${esc(t(loc, 'crossTitle'))}</h2>`;
+  for (const q of data.cross) {
+    const devices = Array.from(new Set(q.rows.flatMap((r) => Object.keys(r.counts))));
+    html += `<section class="vp-admin-q"><h3>${esc(q.title)}</h3><div class="vp-table-wrap"><table class="vp-table" style="min-width:0"><thead><tr><th> </th>${devices.map((d) => `<th>${esc(d || t(loc, 'unknown'))}</th>`).join('')}<th>${esc(t(loc, 'totalLabel'))}</th></tr></thead><tbody>`;
+    for (const r of q.rows) {
+      html += `<tr><td>${esc(r.label)}</td>${devices.map((d) => `<td>${r.counts[d] ?? 0}</td>`).join('')}<td><b>${r.total}</b></td></tr>`;
+    }
+    html += '</tbody></table></div></section>';
+  }
+  if (extraKeys.length > 0) {
+    html += `<h2 class="vp-section">${esc(t(loc, 'dimsTitle'))}</h2>`;
+    for (const key of extraKeys) {
+      const entries = Object.entries(data.extraDist[key]).sort((a, b) => b[1] - a[1]).slice(0, 12);
+      html += `<div class="vp-bd"><h4>${esc(key)}</h4>${entries
+        .map(([v, n]) => `<span class="vp-chip">${esc(v)} · ${n}</span>`)
+        .join('')}</div>`;
+    }
+  }
+  return html;
 }
 
 function dashboardHtml(loc: Parameters<typeof t>[0], polls: (PollRow & { response_count: number })[]): string {

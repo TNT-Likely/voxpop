@@ -122,6 +122,9 @@ export const DICT: Record<string, Entry> = {
   titleEnLabel: { zh: '英文标题（选填）', en: 'English title (optional)' },
   descEnLabel: { zh: '英文说明（选填）', en: 'English description (optional)' },
   autoRefresh: { zh: '自动刷新 30s', en: 'Auto refresh 30s' },
+  crossTitle: { zh: '交叉分析（选项 × 设备）', en: 'Cross analysis (option × device)' },
+  dimsTitle: { zh: '维度分布', en: 'Dimension distribution' },
+  totalLabel: { zh: '合计', en: 'Total' },
   enMismatch: { zh: '英文选项与中文的行数/层级不一致', en: 'English options must match the Chinese structure line by line' },
   registryTitle: { zh: '标签维护', en: 'Tag registry' },
   registryHint: {

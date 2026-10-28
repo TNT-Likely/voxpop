@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { getCookie } from 'hono/cookie';
 import type { Env } from '../types';
-import { cleanDim, hmacHex, isClosed } from '../lib/util';
+import { cleanDim, clampInt, hmacHex, isClosed } from '../lib/util';
 import {
   buildResults, countRecentByCreator, createPoll, getOptionsByQuestionIds, getPoll, getQuestions,
   hasResponded, insertEvent, listForAppFeed, respondToPoll,
@@ -95,6 +95,16 @@ api.post('/api/polls/:id/respond', async (c) => {
 
 // 埋点上报（仅 pageview；respond 事件由服务端在提交时写入）
 api.post('/api/t', async (c) => {
+  // 无条件写库接口：限流防刷（超出静默丢弃，不暴露限流信号）
+  const tIp = c.req.header('CF-Connecting-IP') ?? '0.0.0.0';
+  if (c.env.RL) {
+    try {
+      const rl = await c.env.RL.limit({ key: 't:' + tIp });
+      if (!rl.success) return c.body(null, 204);
+    } catch {
+      // 限流不可用时放行
+    }
+  }
   const rate = parseFloat(c.env.SAMPLE_RATE ?? '1');
   if (Number.isFinite(rate) && rate < 1 && Math.random() > rate) return c.body(null, 204);
 
@@ -198,7 +208,9 @@ api.get('/api/app/polls', async (c) => {
   if ((app && !/^[a-z0-9_-]{1,32}$/.test(app)) || (channel && !/^[a-z0-9_-]{1,32}$/.test(channel))) {
     return c.json({ error: 'bad_request' }, 400);
   }
-  const rows = await listForAppFeed(c.env.DB, app, channel);
+  const limit = clampInt(c.req.query('limit'), 1, 50, 10);
+  const offset = clampInt(c.req.query('offset'), 0, 100000, 0);
+  const rows = await listForAppFeed(c.env.DB, app, channel, limit, offset);
   const origin = new URL(c.req.url).origin;
   const polls = rows.map((p) => {
     let url = `${origin}/p/${p.id}?src=app`;

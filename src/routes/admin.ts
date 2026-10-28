@@ -9,8 +9,8 @@ import { parsePollInput } from '../lib/parse';
 import { runDailyRollup } from '../lib/cron';
 import {
   addRegistry, adminListPolls, buildResults, createPoll, deletePoll, deleteRegistry, exportPoll,
-  getDailySeries, getPoll, getPollPageviews, listRegistry, registryNameMaps, setPollApps,
-  setPollChannels, setPollStatus, setPollVisibility, setPollAccent,
+  exportPollCsv, getDailySeries, getPoll, getPollPageviews, listRegistry, registryNameMaps,
+  setPollApps, setPollChannels, setPollStatus, setPollTitleEn, setPollVisibility, setPollAccent,
 } from '../lib/db';
 import type { DailyPoint, RegistryEntry, ResultsPayload } from '../lib/db';
 import { localeOf, newPollFormBody } from './pages';
@@ -48,6 +48,20 @@ admin.get('/admin', async (c) => {
 
 admin.post('/admin/login', async (c) => {
   const loc = localeOf(c);
+  const ip = c.req.header('CF-Connecting-IP') ?? '0.0.0.0';
+  if (c.env.RL_LOGIN) {
+    try {
+      const rl = await c.env.RL_LOGIN.limit({ key: 'login:' + ip });
+      if (!rl.success) {
+        return c.html(
+          layout({ title: `${t(loc, 'adminTitle')} · 众声 VoxPop`, body: loginFormRaw(loc, t(loc, 'tooManyRequests')), locale: loc, path: c.req.path }),
+          429
+        );
+      }
+    } catch {
+      // 限流不可用时放行
+    }
+  }
   const form = await c.req.parseBody();
   const password = String(form['password'] ?? '');
   if (!password || password !== c.env.ADMIN_KEY) {
@@ -154,7 +168,8 @@ admin.post('/api/admin/polls', async (c) => {
   try {
     const id = await createPoll(c.env.DB, parsed.input);
     return c.json({ ok: true, id });
-  } catch {
+  } catch (e) {
+    console.error('voxpop createPoll failed:', e);
     return c.json({ error: 'level_too_deep' }, 400);
   }
 });
@@ -203,6 +218,8 @@ admin.post('/admin/polls/:id/meta', async (c) => {
   }
   await setPollChannels(c.env.DB, c.req.param('id'), sanitizeTags(asList(form['channels']).join(',')));
   await setPollApps(c.env.DB, c.req.param('id'), sanitizeTags(asList(form['apps']).join(',')));
+  const titleEn = String(form['titleEn'] ?? '').trim();
+  if (titleEn.length <= 80) await setPollTitleEn(c.env.DB, c.req.param('id'), titleEn);
   return c.redirect(`/admin/p/${c.req.param('id')}`);
 });
 
@@ -219,12 +236,23 @@ function sanitizeTags(input: string): string {
 
 admin.get('/admin/polls/:id/export', async (c) => {
   if (!(await isAdmin(c))) return c.json({ error: 'unauthorized' }, 401);
-  const data = await exportPoll(c.env.DB, c.req.param('id'));
+  const id = c.req.param('id');
+  if (c.req.query('format') === 'csv') {
+    const csv = await exportPollCsv(c.env.DB, id);
+    if (csv == null) return c.json({ error: 'poll_not_found' }, 404);
+    return new Response(csv, {
+      headers: {
+        'content-type': 'text/csv; charset=utf-8',
+        'content-disposition': `attachment; filename="voxpop-${id}.csv"`,
+      },
+    });
+  }
+  const data = await exportPoll(c.env.DB, id);
   if (!data) return c.json({ error: 'poll_not_found' }, 404);
   return new Response(JSON.stringify(data, null, 2), {
     headers: {
       'content-type': 'application/json; charset=utf-8',
-      'content-disposition': `attachment; filename="voxpop-${c.req.param('id')}.json"`,
+      'content-disposition': `attachment; filename="voxpop-${id}.json"`,
     },
   });
 });
@@ -361,6 +389,7 @@ function detailHtml(
   <div class="vp-admin-actions">
     <a class="vp-btn ghost" href="/p/${poll.id}" target="_blank" rel="noopener">${esc(t(loc, 'viewPage'))}</a>
     <a class="vp-btn ghost" href="/admin/polls/${poll.id}/export">${esc(t(loc, 'exportJson'))}</a>
+    <a class="vp-btn ghost" href="/admin/polls/${poll.id}/export?format=csv">CSV</a>
     <form method="post" action="/admin/polls/${poll.id}/${poll.status === 'open' ? 'close' : 'open'}" class="inline"><button class="vp-btn ghost">${esc(t(loc, poll.status === 'open' ? 'close' : 'reopen'))}</button></form>
     ${visForm}
     <form method="post" action="/admin/polls/${poll.id}/delete" class="inline" onsubmit="return confirm('${esc(t(loc, 'confirmDelete'))}')"><button class="vp-btn danger">${esc(t(loc, 'delete'))}</button></form>
@@ -372,6 +401,9 @@ function detailHtml(
     <div class="vp-field-row">
       <div class="vp-field" style="flex:0 1 140px"><label>${esc(t(loc, 'accentLabel'))}</label>
         <input type="color" name="accent" value="${esc(poll.accent || '#f8c91c')}">
+      </div>
+      <div class="vp-field" style="flex:2 1 260px"><label>${esc(t(loc, 'titleEnLabel'))}</label>
+        <input name="titleEn" value="${esc(poll.title_en)}" maxlength="80" placeholder="English title (optional)">
       </div>
       <div class="vp-field" style="flex:2 1 300px"><label>${esc(t(loc, 'appsLabel'))}</label>
         <div class="vp-checks">${regApps.map((a) => `<label class="vp-check"><input type="checkbox" name="apps" value="${esc(a.slug)}"${poll.apps.split(',').includes(a.slug) ? ' checked' : ''}> ${esc(a.name)} <code class="vp-slug">${esc(a.slug)}</code></label>`).join('') || `<span class="vp-muted">${esc(t(loc, 'noTags'))}</span>`}</div>

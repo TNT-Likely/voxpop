@@ -2,6 +2,8 @@ export type Env = {
   DB: D1Database;
   /** Rate Limiting binding（wrangler.jsonc ratelimits），不可用时为空 */
   RL?: { limit(input: { key: string }): Promise<{ success: boolean }> };
+  /** 登录专用限流（更严格） */
+  RL_LOGIN?: { limit(input: { key: string }): Promise<{ success: boolean }> };
   ADMIN_KEY: string;
   SERVER_SALT: string;
   TURNSTILE_SITE_KEY?: string;
@@ -16,7 +18,9 @@ export type ResultPolicy = 'always' | 'after_vote' | 'after_close';
 export interface PollRow {
   id: string;
   title: string;
+  title_en: string;
   description: string;
+  description_en: string;
   dedup_mode: DedupMode;
   result_policy: ResultPolicy;
   status: 'draft' | 'open' | 'closed';
@@ -36,6 +40,7 @@ export interface QuestionRow {
   poll_id: string;
   type: QuestionType;
   title: string;
+  title_en: string;
   required: number;
   max_choices: number;
   max_len: number;
@@ -47,6 +52,7 @@ export interface OptionRow {
   question_id: string;
   parent_id: string | null;
   label: string;
+  label_en: string;
   sort: number;
 }
 
@@ -66,7 +72,9 @@ export interface RespondDims {
 /** 后台创建问卷的已解析输入 */
 export interface PollInput {
   title: string;
+  titleEn: string;
   description: string;
+  descriptionEn: string;
   dedupMode: DedupMode;
   resultPolicy: ResultPolicy;
   closeAt: number | null;
@@ -79,9 +87,12 @@ export interface PollInput {
   questions: {
     type: QuestionType;
     title: string;
+    titleEn: string;
     required: boolean;
     maxChoices: number;
     maxLen: number;
     parsedOptions: { label: string; depth: number }[];
+    /** 与 parsedOptions 一一对应的英文选项（空串 = 未翻译） */
+    parsedOptionsEn: string[];
   }[];
 }

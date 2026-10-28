@@ -64,16 +64,16 @@ export async function createPoll(db: D1Database, input: PollInput): Promise<stri
   const ts = nowSec();
   const stmts: D1PreparedStatement[] = [];
   stmts.push(db.prepare(
-    `INSERT INTO polls (id, title, description, dedup_mode, result_policy, status, close_at, extra_keys, accent, visibility, creator_hash, channels, apps, created_at)
-     VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(pollId, input.title, input.description, input.dedupMode, input.resultPolicy, input.closeAt, input.extraKeys, input.accent, input.visibility, input.creatorHash, input.channels, input.apps, ts));
+    `INSERT INTO polls (id, title, title_en, description, description_en, dedup_mode, result_policy, status, close_at, extra_keys, accent, visibility, creator_hash, channels, apps, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(pollId, input.title, input.titleEn, input.description, input.descriptionEn, input.dedupMode, input.resultPolicy, input.closeAt, input.extraKeys, input.accent, input.visibility, input.creatorHash, input.channels, input.apps, ts));
 
   let sort = 0;
   for (const q of input.questions) {
     const qid = genId(12);
     stmts.push(db.prepare(
-      'INSERT INTO questions (id, poll_id, type, title, required, max_choices, max_len, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).bind(qid, pollId, q.type, q.title, q.required ? 1 : 0, q.maxChoices, q.maxLen, sort++));
+      'INSERT INTO questions (id, poll_id, type, title, title_en, required, max_choices, max_len, sort) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).bind(qid, pollId, q.type, q.title, q.titleEn, q.required ? 1 : 0, q.maxChoices, q.maxLen, sort++));
     if (q.type === 'text') continue;
     const stack: { id: string; depth: number }[] = [];
     for (let i = 0; i < q.parsedOptions.length; i++) {
@@ -84,8 +84,8 @@ export async function createPoll(db: D1Database, input: PollInput): Promise<stri
       while (stack.length > 0 && stack[stack.length - 1].depth >= depth) stack.pop();
       const parentId = stack.length > 0 ? stack[stack.length - 1].id : null;
       stmts.push(db.prepare(
-        'INSERT INTO options (id, question_id, parent_id, label, sort) VALUES (?, ?, ?, ?, ?)'
-      ).bind(oid, qid, parentId, label, i));
+        'INSERT INTO options (id, question_id, parent_id, label, label_en, sort) VALUES (?, ?, ?, ?, ?, ?)'
+      ).bind(oid, qid, parentId, label, q.parsedOptionsEn[i] ?? '', i));
       stack.push({ id: oid, depth });
     }
   }
@@ -113,6 +113,10 @@ export async function setPollChannels(db: D1Database, id: string, channels: stri
 
 export async function setPollApps(db: D1Database, id: string, apps: string): Promise<void> {
   await db.prepare('UPDATE polls SET apps = ? WHERE id = ?').bind(apps, id).run();
+}
+
+export async function setPollTitleEn(db: D1Database, id: string, titleEn: string): Promise<void> {
+  await db.prepare('UPDATE polls SET title_en = ? WHERE id = ?').bind(titleEn, id).run();
 }
 
 /* ---------- 标签注册表（应用 / 渠道的 slug + 显示名，后台维护） ---------- */
@@ -167,7 +171,7 @@ export interface AppFeedPoll {
  * 应用与渠道双维匹配（空标签 = 通配）；已收录问卷始终可见，
  * 未收录问卷必须显式定向了应用或渠道（App 专属问卷）。
  */
-export async function listForAppFeed(db: D1Database, app: string, channel: string): Promise<AppFeedPoll[]> {
+export async function listForAppFeed(db: D1Database, app: string, channel: string, limit = 10, offset = 0): Promise<AppFeedPoll[]> {
   const { results } = await db.prepare(
     `SELECT p.id, p.title, p.description, p.close_at, p.accent
      FROM polls p
@@ -176,9 +180,55 @@ export async function listForAppFeed(db: D1Database, app: string, channel: strin
        AND (p.apps = '' OR instr(',' || p.apps || ',', ',' || ? || ',') > 0)
        AND (p.channels = '' OR instr(',' || p.channels || ',', ',' || ? || ',') > 0)
        AND (p.visibility = 'listed' OR p.channels != '' OR p.apps != '')
-     ORDER BY p.created_at DESC LIMIT 10`
-  ).bind(nowSec(), app, channel).all();
+     ORDER BY p.created_at DESC LIMIT ? OFFSET ?`
+  ).bind(nowSec(), app, channel, limit, offset).all();
   return (results ?? []) as unknown as AppFeedPoll[];
+}
+
+/** CSV 导出：答卷长表（一行一答案），UTF-8 BOM 便于 Excel 直接打开 */
+export async function exportPollCsv(db: D1Database, pollId: string): Promise<string | null> {
+  const poll = await getPoll(db, pollId);
+  if (!poll) return null;
+  const questions = await getQuestions(db, pollId);
+  const optionsMap = await getOptionsByQuestionIds(db, questions.map((q) => q.id));
+  const labelOf = new Map<string, string>();
+  for (const list of optionsMap.values()) for (const o of list) labelOf.set(o.id, o.label);
+  const qTitle = new Map(questions.map((q) => [q.id, q.title]));
+  const { results: responses } = await db.prepare(
+    'SELECT * FROM responses WHERE poll_id = ? ORDER BY created_at'
+  ).bind(pollId).all();
+  const { results: answers } = await db.prepare(
+    `SELECT a.*, r.created_at AS r_ts, r.country, r.device, r.browser, r.os
+     FROM answers a JOIN responses r ON r.id = a.response_id WHERE r.poll_id = ? ORDER BY a.id`
+  ).bind(pollId).all();
+  const byResponse = new Map<string, Record<string, unknown>[]>();
+  for (const a of answers as unknown as Record<string, unknown>[]) {
+    const list = byResponse.get(String(a.response_id)) ?? [];
+    list.push(a);
+    byResponse.set(String(a.response_id), list);
+  }
+  const esc2 = (v: unknown) => {
+    const s2 = v == null ? '' : String(v);
+    return /[",\n]/.test(s2) ? '"' + s2.replace(/"/g, '""') + '"' : s2;
+  };
+  const header = 'response_id,submitted_at,country,device,browser,os,question,answer';
+  const lines: string[] = [header];
+  for (const r of (responses ?? []) as unknown as Record<string, unknown>[]) {
+    const list = byResponse.get(String(r.id)) ?? [];
+    if (list.length === 0) {
+      lines.push([r.id, new Date(Number(r.created_at) * 1000).toISOString(), r.country, r.device, r.browser, r.os, '(no answers)', ''].map(esc2).join(','));
+    }
+    for (const a of list) {
+      const qid = String(a.question_id);
+      const answer = a.option_id != null ? (labelOf.get(String(a.option_id)) ?? String(a.option_id)) : String(a.text_value ?? '');
+      lines.push([
+        r.id, new Date(Number(r.created_at) * 1000).toISOString(),
+        r.country, r.device, r.browser, r.os,
+        qTitle.get(qid) ?? qid, answer,
+      ].map(esc2).join(','));
+    }
+  }
+  return '﻿' + lines.join('\r\n');
 }
 
 export async function deletePoll(db: D1Database, id: string): Promise<void> {
@@ -240,11 +290,17 @@ export interface ResultsPayload {
   questions: unknown[];
 }
 
+/** 按语言取显示文本：en 且有翻译用翻译，否则回退中文 */
+function pick(locale: string, zh: string, en: string): string {
+  return locale === 'en' && en ? en : zh;
+}
+
 /**
  * 结果聚合：每题各选项计数（级联聚合为树）、答卷维度构成、
  * includeText 时附带文本答案内容（仅管理端）。
+ * locale 用于按语言输出题干与选项文本。
  */
-export async function buildResults(db: D1Database, poll: PollRow, includeText: boolean): Promise<ResultsPayload> {
+export async function buildResults(db: D1Database, poll: PollRow, includeText: boolean, locale = 'zh'): Promise<ResultsPayload> {
   const questions = await getQuestions(db, poll.id);
   const optionsMap = await getOptionsByQuestionIds(db, questions.map((q) => q.id));
   const total = (await db.prepare(
@@ -299,7 +355,7 @@ export async function buildResults(db: D1Database, poll: PollRow, includeText: b
         texts = results ?? [];
       }
       questionsOut.push({
-        id: q.id, type: q.type, title: q.title, required: !!q.required,
+        id: q.id, type: q.type, title: pick(locale, q.title, q.title_en), required: !!q.required,
         answerCount: n, ...(texts ? { texts } : {}),
       });
       continue;
@@ -307,7 +363,7 @@ export async function buildResults(db: D1Database, poll: PollRow, includeText: b
     const opts = optionsMap.get(q.id) ?? [];
     const byId = new Map<string, { id: string; label: string; count: number; children: unknown[] }>();
     for (const o of opts) {
-      byId.set(o.id, { id: o.id, label: o.label, count: counts.get(`${q.id}:${o.id}`) ?? 0, children: [] });
+      byId.set(o.id, { id: o.id, label: pick(locale, o.label, o.label_en), count: counts.get(`${q.id}:${o.id}`) ?? 0, children: [] });
     }
     const roots: { id: string; label: string; count: number; children: unknown[] }[] = [];
     for (const o of opts) {
@@ -323,7 +379,7 @@ export async function buildResults(db: D1Database, poll: PollRow, includeText: b
     };
     for (const root of roots) sumUp(root as never);
     questionsOut.push({
-      id: q.id, type: q.type, title: q.title, required: !!q.required,
+      id: q.id, type: q.type, title: pick(locale, q.title, q.title_en), required: !!q.required,
       maxChoices: q.max_choices, options: roots,
     });
   }

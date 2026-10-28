@@ -2,12 +2,14 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { DedupMode, Env, PollInput, PollRow, QuestionType, ResultPolicy } from '../types';
-import { clampInt, esc, fmtDate, hmacHex, isClosed, nowSec, parseOptionLines } from '../lib/util';
+import { clampInt, esc, fmtDate, hmacHex, isClosed, jsonForScript, nowSec, parseOptionLines } from '../lib/util';
 import { layout, notFoundBody } from '../lib/html';
+import { runDailyRollup } from '../lib/cron';
 import {
-  adminListPolls, buildResults, createPoll, deletePoll, exportPoll, getPoll, setPollStatus,
+  adminListPolls, buildResults, createPoll, deletePoll, exportPoll, getDailySeries, getPoll,
+  getPollPageviews, setPollStatus,
 } from '../lib/db';
-import type { ResultsPayload } from '../lib/db';
+import type { DailyPoint, ResultsPayload } from '../lib/db';
 
 export const admin = new Hono<{ Bindings: Env }>();
 
@@ -170,6 +172,13 @@ admin.get('/admin/polls/:id/export', async (c) => {
   });
 });
 
+// 手动触发一次日聚合（也用于部署后的首次回填与验证）
+admin.post('/admin/cron/run', async (c) => {
+  if (!(await isAdmin(c))) return c.json({ error: 'unauthorized' }, 401);
+  const r = await runDailyRollup(c.env);
+  return c.json({ ok: true, ...r });
+});
+
 /* ---------- 结果详情 ---------- */
 
 admin.get('/admin/p/:id', async (c) => {
@@ -177,8 +186,16 @@ admin.get('/admin/p/:id', async (c) => {
   const poll = await getPoll(c.env.DB, c.req.param('id'));
   if (!poll) return c.html(layout({ title: '404 · 众声 VoxPop', body: notFoundBody() }), 404);
   const results = await buildResults(c.env.DB, poll, true);
+  const [trend, pv] = await Promise.all([
+    getDailySeries(c.env.DB, poll.id),
+    getPollPageviews(c.env.DB, poll.id),
+  ]);
   const origin = new URL(c.req.url).origin;
-  return c.html(layout({ title: `结果 · ${poll.title} · 众声 VoxPop`, body: detailHtml(poll, results, origin) }));
+  return c.html(layout({
+    title: `结果 · ${poll.title} · 众声 VoxPop`,
+    body: detailHtml(poll, results, origin, trend, pv),
+    head: '<script src="https://cdn.jsdelivr.net/npm/chart.js@4" defer></script><script src="/assets/admin-results.js" defer></script>',
+  }));
 });
 
 interface OptNode { id: string; label: string; count: number; children: OptNode[] }
@@ -187,7 +204,7 @@ function typeLabel(t: string): string {
   return { single: '单选', multi: '多选', cascade: '级联', text: '文本' }[t] ?? t;
 }
 
-function detailHtml(poll: PollRow, results: ResultsPayload, origin: string): string {
+function detailHtml(poll: PollRow, results: ResultsPayload, origin: string, trend: DailyPoint[], pv: number): string {
   const closed = isClosed(poll);
   const badge = poll.status === 'closed' ? '已截止' : closed ? '已到期' : '进行中';
   const link = `${origin}/p/${poll.id}`;
@@ -234,6 +251,18 @@ function detailHtml(poll: PollRow, results: ResultsPayload, origin: string): str
       .join('')}</div>`;
   }
 
+  const hasChartData = results.total > 0 || trend.some((t) => t.responses > 0 || t.pageviews > 0);
+  const charts = hasChartData ? `
+  <h2>趋势与构成</h2>
+  <div class="vp-chart-wide"><canvas id="vp-trend" height="110"></canvas></div>
+  <div class="vp-charts">
+    <div class="vp-chart-box"><h4>设备</h4><canvas id="vp-ch-device"></canvas></div>
+    <div class="vp-chart-box"><h4>浏览器</h4><canvas id="vp-ch-browser"></canvas></div>
+    <div class="vp-chart-box"><h4>系统</h4><canvas id="vp-ch-os"></canvas></div>
+    <div class="vp-chart-box"><h4>国家/地区</h4><canvas id="vp-ch-country"></canvas></div>
+  </div>
+  <script type="application/json" id="vp-chart-data">${jsonForScript({ trend, breakdown: results.breakdown })}</script>` : '';
+
   return `
   <div class="vp-admin-head">
     <h1>${esc(poll.title)}</h1>
@@ -248,10 +277,11 @@ function detailHtml(poll: PollRow, results: ResultsPayload, origin: string): str
   </div>
   <div class="vp-field"><label>公开链接</label><input readonly value="${esc(link)}" onclick="this.select()"></div>
   <div class="vp-field"><label>嵌入代码</label><textarea readonly rows="3" onclick="this.select()">${esc(embedCode)}</textarea></div>
-  <h2>结果（${results.total} 份答卷）</h2>
+  <h2>结果（${results.total} 份答卷 · ${pv} 次浏览）</h2>
   ${qs || '<p class="vp-muted">还没有答卷</p>'}
   <h2>答卷构成</h2>
   ${bd || '<p class="vp-muted">暂无数据</p>'}
+  ${charts}
   <p class="vp-muted" style="margin-top:24px"><a href="/admin">← 返回列表</a></p>`;
 }
 

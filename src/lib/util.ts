@@ -77,3 +77,9 @@ export function fmtDate(sec: number | null): string {
 export function isClosed(p: { status: string; close_at: number | null }): boolean {
   return p.status === 'closed' || (!!p.close_at && p.close_at <= nowSec());
 }
+
+/** UTC 日界起点（unix 秒），offsetDays 负数表示往前推 */
+export function utcDayStartSec(offsetDays = 0): number {
+  const now = Math.floor(Date.now() / 1000);
+  return now - (now % 86400) + offsetDays * 86400;
+}

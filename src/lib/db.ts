@@ -1,7 +1,7 @@
 import type {
   AnswerInput, Env, OptionRow, PollInput, PollRow, QuestionRow, RespondDims,
 } from '../types';
-import { genId, nowSec } from './util';
+import { genId, nowSec, utcDayStartSec } from './util';
 
 export async function getPoll(db: D1Database, id: string): Promise<PollRow | null> {
   const row = await db.prepare('SELECT * FROM polls WHERE id = ?').bind(id).first<PollRow>();
@@ -281,4 +281,39 @@ export async function exportPoll(db: D1Database, pollId: string): Promise<unknow
     answers,
     exportedAt: nowSec(),
   };
+}
+
+export interface DailyPoint { day: string; responses: number; pageviews: number }
+
+/** 近 N 天每日答卷数与浏览量（UTC 日界，用于后台趋势图表） */
+export async function getDailySeries(db: D1Database, pollId: string, days = 14): Promise<DailyPoint[]> {
+  const startSec = utcDayStartSec(-(days - 1));
+  const [respRows, pvRows] = await Promise.all([
+    db.prepare(
+      `SELECT date(created_at, 'unixepoch') AS d, COUNT(*) AS c
+       FROM responses WHERE poll_id = ? AND created_at >= ? GROUP BY d`
+    ).bind(pollId, startSec).all(),
+    db.prepare(
+      `SELECT date(ts, 'unixepoch') AS d, COUNT(*) AS c
+       FROM events WHERE poll_id = ? AND type = 'pageview' AND ts >= ? GROUP BY d`
+    ).bind(pollId, startSec).all(),
+  ]);
+  const respMap = new Map<string, number>();
+  for (const r of (respRows.results ?? []) as unknown as { d: string; c: number }[]) respMap.set(r.d, r.c);
+  const pvMap = new Map<string, number>();
+  for (const r of (pvRows.results ?? []) as unknown as { d: string; c: number }[]) pvMap.set(r.d, r.c);
+  const out: DailyPoint[] = [];
+  for (let i = 0; i < days; i++) {
+    const day = new Date((startSec + i * 86400) * 1000).toISOString().slice(0, 10);
+    out.push({ day, responses: respMap.get(day) ?? 0, pageviews: pvMap.get(day) ?? 0 });
+  }
+  return out;
+}
+
+/** 某问卷的累计页面浏览量（events 明细；历史数据以 event_daily 为准） */
+export async function getPollPageviews(db: D1Database, pollId: string): Promise<number> {
+  const row = await db.prepare(
+    "SELECT COUNT(*) AS n FROM events WHERE poll_id = ? AND type = 'pageview'"
+  ).bind(pollId).first<{ n: number }>();
+  return row?.n ?? 0;
 }

@@ -140,6 +140,21 @@ form.inline { display: inline; }
 .vp-actions-bar { margin-top: 16px; }
 .vp-link { background: none; border: none; color: var(--vp-accent); cursor: pointer; font: inherit; padding: 0; }
 
+/* ---------- 后台图表 ---------- */
+.vp-chart-wide {
+  background: var(--vp-card); border: 1px solid var(--vp-line);
+  border-radius: var(--vp-radius); padding: 14px 16px; margin-bottom: 12px;
+}
+.vp-charts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 16px;
+}
+.vp-chart-box {
+  background: var(--vp-card); border: 1px solid var(--vp-line);
+  border-radius: var(--vp-radius); padding: 12px 14px;
+}
+.vp-chart-box h4 { margin: 0 0 6px; font-size: 13px; color: var(--vp-muted); font-weight: 500; }
+
 /* ---------- 窄屏 ---------- */
 @media (max-width: 480px) {
   .vp-title { font-size: 20px; }

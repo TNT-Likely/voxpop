@@ -40,7 +40,12 @@
     function stored() {
       try { return localStorage.getItem('vp_theme') || 'auto'; } catch (e) { return 'auto'; }
     }
-    function icon(t) { return t === 'light' ? '☀' : t === 'dark' ? '☾' : '◐'; }
+    var ICONS = {
+      auto: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none"/></svg>',
+      light: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M19.4 4.6l-1.8 1.8M6.4 17.6l-1.8 1.8"/></svg>',
+      dark: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
+    };
+    function icon(t) { return ICONS[t] || ICONS.auto; }
     function label(t) { return T(t === 'light' ? 'themeLight' : t === 'dark' ? 'themeDark' : 'themeAuto'); }
     function effTheme() {
       // URL ?theme= 是硬覆盖（嵌入场景），优先于本地偏好
@@ -53,7 +58,7 @@
     function apply() {
       var t = stored();
       document.documentElement.dataset.theme = effTheme();
-      btn.textContent = icon(t);
+      btn.innerHTML = icon(t);
       btn.title = label(t);
       btn.setAttribute('aria-label', label(t));
     }

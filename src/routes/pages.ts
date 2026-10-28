@@ -46,10 +46,10 @@ pages.get('/', async (c) => {
     ${p.description ? `<p class="vp-card-desc">${esc(p.description)}</p>` : ''}
     <p class="vp-card-meta">${esc(t(loc, 'participants', { n: p.response_count }))} · ${p.close_at ? esc(t(loc, 'closingOn', { date: fmtDate(p.close_at) })) : esc(t(loc, 'ongoing'))}</p>
   </a>`).join('');
-  const body = `<div class="vp-home">
-  <h1 class="vp-home-title">${esc(t(loc, 'ongoingTitle'))}</h1>
+  const body = `<h1 class="vp-home-title">${esc(t(loc, 'ongoingTitle'))}</h1>
+  <div class="vp-home">
   ${cards || `<p class="vp-empty">${esc(t(loc, 'emptyHome'))}</p>`}
-</div>`;
+  </div>`;
   return c.html(layout({ title: `众声 VoxPop · ${t(loc, 'tagline')}`, body, locale: loc, path: curPath(c) }));
 });
 

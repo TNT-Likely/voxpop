@@ -12,7 +12,7 @@ import { validateAnswers } from '../lib/validate';
 export const api = new Hono<{ Bindings: Env }>();
 
 api.get('/api/health', (c) =>
-  c.json({ ok: true, name: 'voxpop', version: '0.1.0', ts: Date.now() })
+  c.json({ ok: true, name: 'voxpop', version: '0.2.0', ts: Date.now() })
 );
 
 // 公开结果 JSON（按结果可见策略放行；供官网等外部消费，带 CORS）

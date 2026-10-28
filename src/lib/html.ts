@@ -63,13 +63,14 @@ export function layout(o: LayoutOpts): string {
   const footer = o.embed
     ? ''
     : `<footer class="vp-footer"><div class="vp-footer-in">
-  <div class="vp-footer-brand">众声 <span class="vp-logo-chip sm">VoxPop</span></div>
-  <p class="vp-footer-privacy">${esc(t(locale, 'footerPrivacy'))}</p>
-  <div class="vp-footer-links">
-    <a href="https://github.com/TNT-Likely/voxpop" target="_blank" rel="noopener">GitHub</a>
+  <div class="vp-footer-brand"><span>众声</span><span class="vp-logo-chip sm">VoxPop</span></div>
+  <nav class="vp-footer-links">
+    <a href="/">${esc(t(locale, 'home'))}</a>
     <a href="/new">${esc(t(locale, 'newPoll'))}</a>
     <a href="/admin">${esc(t(locale, 'admin'))}</a>
-  </div>
+    <a href="https://github.com/TNT-Likely/voxpop" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+  <p class="vp-footer-privacy">${esc(t(locale, 'footerPrivacy'))}</p>
 </div></footer>`;
   const bodyAttrs = o.createEndpoint ? ` data-create-endpoint="${esc(o.createEndpoint)}"` : '';
   return `<!doctype html>

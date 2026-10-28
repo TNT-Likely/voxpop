@@ -119,6 +119,10 @@ export const DICT: Record<string, Entry> = {
     zh: '应用定向（留空 = 全部应用）',
     en: 'App targeting (blank = all apps)',
   },
+  titleEnLabel: { zh: '英文标题（选填）', en: 'English title (optional)' },
+  descEnLabel: { zh: '英文说明（选填）', en: 'English description (optional)' },
+  autoRefresh: { zh: '自动刷新 30s', en: 'Auto refresh 30s' },
+  enMismatch: { zh: '英文选项与中文的行数/层级不一致', en: 'English options must match the Chinese structure line by line' },
   registryTitle: { zh: '标签维护', en: 'Tag registry' },
   registryHint: {
     zh: '应用与渠道用于 App 发现接口的定向；问卷创建时从这里勾选，避免手填出错。',

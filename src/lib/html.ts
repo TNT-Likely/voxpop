@@ -14,6 +14,8 @@ export interface LayoutOpts {
   path?: string;
   /** body 上的建卷端点标记（后台 / 自助建票共用渲染器） */
   createEndpoint?: string;
+  /** 社交分享卡片 */
+  og?: { title: string; description?: string; url?: string };
 }
 
 /** 首帧前设置主题，避免闪烁；URL ?theme= 优先（嵌入场景） */
@@ -80,6 +82,12 @@ export function layout(o: LayoutOpts): string {
 <meta name="color-scheme" content="light dark">
 <title>${esc(o.title)}</title>
 ${o.description ? `<meta name="description" content="${esc(o.description)}">` : ''}
+${o.og ? `<meta property="og:title" content="${esc(o.og.title)}">
+${o.og.description ? `<meta property="og:description" content="${esc(o.og.description)}">` : ''}
+${o.og.url ? `<meta property="og:url" content="${esc(o.og.url)}">` : ''}
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="众声 VoxPop">
+<meta name="twitter:card" content="summary">` : ''}
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/app.css">
 ${THEME_BOOT}

@@ -36,6 +36,11 @@ function curPath(c: Context<{ Bindings: Env }>): string {
   return u.pathname + u.search;
 }
 
+/** 按语言取显示文本：en 且有翻译用翻译，否则回退中文 */
+function pick(loc: Locale, zh: string, en: string): string {
+  return loc === 'en' && en ? en : zh;
+}
+
 pages.get('/', async (c) => {
   const loc = localeOf(c);
   ensureVid(c);
@@ -78,26 +83,28 @@ async function renderPollPage(c: Context<{ Bindings: Env }>, id: string, embed: 
   else showResults = poll.result_policy === 'always';
 
   let results: ResultsPayload | null = null;
-  if (showResults) results = await buildResults(c.env.DB, poll, false);
+  if (showResults) results = await buildResults(c.env.DB, poll, false, loc);
 
   const questions = await getQuestions(c.env.DB, poll.id);
   const optionsMap = await getOptionsByQuestionIds(c.env.DB, questions.map((q) => q.id));
   const turnstileSiteKey =
     c.env.TURNSTILE_SITE_KEY && c.env.TURNSTILE_SECRET_KEY ? c.env.TURNSTILE_SITE_KEY : null;
   const accent = accentOf(c, poll);
+  const title = pick(loc, poll.title, poll.title_en);
+  const description = pick(loc, poll.description, poll.description_en);
 
   const payload = {
     mode: showResults ? 'results' : 'form',
     closed,
     hasVoted,
-    poll: { id: poll.id, title: poll.title, link: new URL(c.req.url).origin + '/p/' + poll.id, dedupMode: poll.dedup_mode },
+    poll: { id: poll.id, title, link: new URL(c.req.url).origin + '/p/' + poll.id, dedupMode: poll.dedup_mode },
     questions: questions.map((q) => ({
-      id: q.id, type: q.type, title: q.title,
+      id: q.id, type: q.type, title: pick(loc, q.title, q.title_en),
       required: !!q.required, maxChoices: q.max_choices, maxLen: q.max_len,
     })),
     options: Object.fromEntries(
       [...optionsMap.entries()].map(([qid, list]) => [
-        qid, list.map((o) => ({ id: o.id, parentId: o.parent_id, label: o.label, sort: o.sort })),
+        qid, list.map((o) => ({ id: o.id, parentId: o.parent_id, label: pick(loc, o.label, o.label_en), sort: o.sort })),
       ])
     ),
     turnstileSiteKey,
@@ -109,15 +116,16 @@ async function renderPollPage(c: Context<{ Bindings: Env }>, id: string, embed: 
     (turnstileSiteKey ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : '') +
     '<script src="/assets/vendor/qrcode.min.js" defer></script>';
   const body = `<div class="vp-poll">
-  <h1 class="vp-title">${esc(poll.title)}</h1>
-  ${poll.description ? `<p class="vp-desc">${esc(poll.description)}</p>` : ''}
+  <h1 class="vp-title">${esc(title)}</h1>
+  ${description ? `<p class="vp-desc">${esc(description)}</p>` : ''}
   <div id="vp-root"><noscript><p class="vp-muted">${esc(t(loc, 'needJs'))}</p></noscript></div>
 </div>
 <script type="application/json" id="vp-data">${jsonForScript(payload)}</script>`;
   return c.html(layout({
-    title: `${poll.title} · 众声 VoxPop`,
-    description: poll.description || poll.title,
+    title: `${title} · 众声 VoxPop`,
+    description,
     body, head, embed, locale: loc, accent, path: curPath(c),
+    og: { title, description, url: new URL(c.req.url).origin + '/p/' + poll.id },
   }));
 }
 
@@ -131,7 +139,9 @@ export function newPollFormBody(loc: Locale, isAdmin: boolean, registry: Registr
     : `<p class="vp-muted">${esc(t(loc, 'noTags'))} · <a href="/admin/registry">${esc(t(loc, 'goRegistry'))}</a></p>`;
   return `
   <div class="vp-field"><label>${esc(t(loc, 'pollTitleLabel'))}</label><input id="f-title" maxlength="80" placeholder="${esc(t(loc, 'pollTitlePlaceholder'))}"></div>
+  <div class="vp-field"><label>${esc(t(loc, 'titleEnLabel'))}</label><input id="f-title-en" maxlength="80"></div>
   <div class="vp-field"><label>${esc(t(loc, 'descLabel'))}</label><input id="f-desc" maxlength="300"></div>
+  <div class="vp-field"><label>${esc(t(loc, 'descEnLabel'))}</label><input id="f-desc-en" maxlength="300"></div>
   <div class="vp-field-row">
     <div class="vp-field"><label>${esc(t(loc, 'dedupLabel'))}</label>
       <select id="f-dedup">

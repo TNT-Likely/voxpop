@@ -33,7 +33,10 @@ export function parsePollInput(
   const s = (v: unknown) => (typeof v === 'string' ? v : '');
   const title = s(raw.title).trim();
   if (!title || title.length > 80) return { error: 'title_too_long' };
+  const titleEn = s(raw.titleEn).trim();
+  if (titleEn.length > 80) return { error: 'title_too_long' };
   const description = s(raw.description).trim().slice(0, 300);
+  const descriptionEn = s(raw.descriptionEn).trim().slice(0, 300);
 
   const dedupMode = (['device', 'ip', 'open'] as const).includes(s(raw.dedupMode) as DedupMode)
     ? (s(raw.dedupMode) as DedupMode)
@@ -87,9 +90,26 @@ export function parsePollInput(
       }
       if (parsedOptions.some((o) => o.depth > 2)) return { error: 'level_too_deep' };
     }
-    questions.push({ type, title: qTitle, required, maxChoices, maxLen, parsedOptions });
+    // 英文选项：行数与层级结构必须与中文一致（逐行对齐），留空 = 未翻译
+    const optionsTextEn = s(q.optionsTextEn).trim();
+    let parsedOptionsEn: string[] = [];
+    if (type !== 'text' && optionsTextEn) {
+      const enParsed = parseOptionLines(optionsTextEn);
+      if (enParsed.length !== parsedOptions.length) return { error: 'en_mismatch' };
+      for (let i = 0; i < enParsed.length; i++) {
+        if (enParsed[i].depth !== parsedOptions[i].depth) return { error: 'en_mismatch' };
+        if (!enParsed[i].label) return { error: 'en_mismatch' };
+      }
+      parsedOptionsEn = enParsed.map((o) => o.label);
+    }
+    const qTitleEn = s(q.titleEn).trim();
+    if (qTitleEn.length > 120) return { error: 'title_too_long' };
+    questions.push({
+      type, title: qTitle, titleEn: qTitleEn, required, maxChoices, maxLen,
+      parsedOptions, parsedOptionsEn,
+    });
   }
   return {
-    input: { title, description, dedupMode, resultPolicy, closeAt, extraKeys, accent, visibility, creatorHash, channels, apps, questions },
+    input: { title, titleEn, description, descriptionEn, dedupMode, resultPolicy, closeAt, extraKeys, accent, visibility, creatorHash, channels, apps, questions },
   };
 }

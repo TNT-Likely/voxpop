@@ -138,7 +138,7 @@ flowchart LR
 |---|---|---|
 | M1 MVP | 六表、四种题型、四层防重、结果页、极简后台、埋点写入 | ✅ 已实现（2026-10-28 上线） |
 | M2 | Turnstile 接入（代码内置，官方测试密钥验证过全链路，激活=配置密钥）、后台 Chart.js 趋势/构成图表 + PV 统计、Cron 日聚合（03:17 UTC，events 明细 180 天保留，聚合表永久）、npm 包 voxpop-embed、Deploy to Cloudflare 按钮 | ✅ 已实现 |
-| M3 | 主题化、二维码海报、多语言、自助建卷（评估） | 规划 |
+| M3 | 中英双语（Accept-Language 自动 + ?lang 切换）、明暗三态主题（跟随系统 + 手动切换 + ?theme）、三端适配（移动/iPad/PC）、主题色注入（问卷配置 + ?accent，海报跟随）、二维码分享海报、自助建卷 /new（Turnstile + 每日 5 份限额 + 默认 unlisted，管理员可收录）、UI 对齐 BeeCount v4.0 设计规范（--bc-* 令牌体系） | ✅ 已实现（2026-10-29） |
 
 ## 8. 风险与对策
 

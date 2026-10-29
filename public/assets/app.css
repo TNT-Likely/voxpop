@@ -257,9 +257,9 @@ h3 small.vp-chip { margin-left: 6px; font-weight: 400; }
 .vp-field { margin-bottom: 14px; }
 .vp-field label { display: block; font-size: 12px; color: var(--bc-muted); margin-bottom: 5px; }
 .vp-field input, .vp-field select, .vp-field textarea {
-  width: 100%; padding: 12px; border: 1.5px solid transparent;
+  width: 100%; padding: 12px; border: 1px solid var(--bc-line);
   border-radius: var(--r-ctrl); font: inherit; font-size: 13px;
-  background: var(--bc-soft); color: var(--bc-ink); min-height: 44px;
+  background: var(--bc-paper); color: var(--bc-ink); min-height: 44px;
 }
 .vp-field input[type="color"] { padding: 4px; min-height: 44px; cursor: pointer; }
 .vp-field input:focus, .vp-field select:focus, .vp-field textarea:focus {
@@ -364,11 +364,11 @@ input[type="radio"]:disabled, input[type="checkbox"]:disabled { opacity: .4; cur
 .vp-checks { display: flex; flex-wrap: wrap; gap: 8px; }
 .vp-check {
   display: inline-flex; align-items: center; gap: 8px;
-  background: var(--bc-soft); border: 1.5px solid transparent;
+  background: var(--bc-paper); border: 1px solid var(--bc-line);
   border-radius: var(--r-ctrl); padding: 8px 12px; min-height: 44px;
   cursor: pointer; font-size: 13px;
 }
-.vp-check:hover { border-color: var(--bc-line); }
+.vp-check:hover { border-color: var(--bc-muted); }
 .vp-check:has(input:checked) { background: var(--bc-tint); border-color: var(--bc-accent); }
 .vp-check input { margin: 0; }
 .vp-slug { font-size: 11px; color: var(--bc-muted); }

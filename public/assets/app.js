@@ -580,6 +580,16 @@
       btn.disabled = true;
     }
 
+    // 实时结果策略：表单下方同步展示当前结果
+    if (data.alsoResults && data.results) {
+      var secWrap = el('div', 'vp-live-results');
+      secWrap.appendChild(el('h3', 'vp-section-h', T('liveResults')));
+      var liveBox = el('div');
+      renderResults(data.results, liveBox);
+      secWrap.appendChild(liveBox);
+      root.appendChild(secWrap);
+    }
+
     btn.addEventListener('click', function () {
       for (var i = 0; i < data.questions.length; i++) {
         var q = data.questions[i];
@@ -610,12 +620,21 @@
       }).then(function (res) {
         if (res.status === 200) {
           markVoted(data.poll.id);
-          root.textContent = '';
-          if (res.j.results) renderResults(res.j.results, root);
-          else {
-            root.appendChild(el('p', 'vp-thanks', T('thanks')));
-            if (data.closed) root.appendChild(el('p', 'vp-banner', T('closedBanner')));
-            if (data.poll.resultPolicy === 'after_close') root.appendChild(el('p', 'vp-banner', T('resultsHiddenNotice')));
+          if (data.alsoResults && res.j.results) {
+            // 实时策略：更新表单下方的结果区
+            data.results = res.j.results;
+            var liveBox = root.querySelector('.vp-live-results > div');
+            if (liveBox) { liveBox.textContent = ''; renderResults(res.j.results, liveBox); }
+            msg.textContent = '';
+            btn.disabled = false;
+          } else {
+            root.textContent = '';
+            if (res.j.results) renderResults(res.j.results, root);
+            else {
+              root.appendChild(el('p', 'vp-thanks', T('thanks')));
+              if (data.closed) root.appendChild(el('p', 'vp-banner', T('closedBanner')));
+              if (data.poll.resultPolicy === 'after_close') root.appendChild(el('p', 'vp-banner', T('resultsHiddenNotice')));
+            }
           }
         } else if (res.status === 409) {
           msg.textContent = '';

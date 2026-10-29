@@ -123,6 +123,7 @@ export const DICT: Record<string, Entry> = {
   titleEnLabel: { zh: '英文标题（选填）', en: 'English title (optional)' },
   descEnLabel: { zh: '英文说明（选填）', en: 'English description (optional)' },
   autoRefresh: { zh: '自动刷新 30s', en: 'Auto refresh 30s' },
+  liveResults: { zh: '实时结果', en: 'Live results' },
   crossTitle: { zh: '交叉分析（选项 × 设备）', en: 'Cross analysis (option × device)' },
   dimsTitle: { zh: '维度分布', en: 'Dimension distribution' },
   totalLabel: { zh: '合计', en: 'Total' },

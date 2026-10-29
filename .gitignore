@@ -5,3 +5,4 @@ node_modules/
 AGENTS.md
 .docs/
 docs/
+wrangler.demo.jsonc

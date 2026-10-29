@@ -76,11 +76,26 @@ async function renderPollPage(c: Context<{ Bindings: Env }>, id: string, embed: 
   const hasVoted = poll.dedup_mode !== 'open' ? await hasResponded(c.env.DB, poll.id, vh) : false;
   const closed = isClosed(poll);
 
-  // 结果可见性：截止后全部可见；进行中按策略
+  // 表单与结果的可见性：截止后仅结果；已投按策略；实时策略 = 表单 + 下方实时结果
+  let showForm: boolean;
   let showResults: boolean;
-  if (closed) showResults = true;
-  else if (hasVoted) showResults = poll.result_policy !== 'after_close';
-  else showResults = poll.result_policy === 'always';
+  let alsoResults = false;
+  if (closed) {
+    showForm = false;
+    showResults = true;
+  } else if (hasVoted) {
+    if (poll.result_policy === 'after_close') {
+      showForm = true; // 锁定态表单，结果截止后才可见
+      showResults = false;
+    } else {
+      showForm = false;
+      showResults = true;
+    }
+  } else {
+    showForm = true;
+    showResults = poll.result_policy === 'always';
+    alsoResults = showResults;
+  }
 
   let results: ResultsPayload | null = null;
   if (showResults) results = await buildResults(c.env.DB, poll, false, loc);
@@ -94,9 +109,11 @@ async function renderPollPage(c: Context<{ Bindings: Env }>, id: string, embed: 
   const description = pick(loc, poll.description, poll.description_en);
 
   const payload = {
-    mode: showResults ? 'results' : 'form',
+    mode: showForm ? 'form' : 'results',
+    alsoResults,
     closed,
     hasVoted,
+    locale: loc,
     poll: { id: poll.id, title, link: new URL(c.req.url).origin + '/p/' + poll.id, dedupMode: poll.dedup_mode },
     questions: questions.map((q) => ({
       id: q.id, type: q.type, title: pick(loc, q.title, q.title_en),

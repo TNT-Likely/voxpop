@@ -144,7 +144,7 @@ export function detailHtml(
     qs += '</section>';
   }
 
-  const bdPairs = [['device', 'device'], ['browser', 'browser'], ['os', 'os'], ['country', 'country']] as const;
+  const bdPairs = [['device', 'device'], ['browser', 'browser'], ['os', 'os'], ['country', 'country'], ['lang', 'lang']] as const;
   let bd = '';
   for (const [key, labelKey] of bdPairs) {
     const entries = Object.entries(results.breakdown[key] ?? {});
@@ -164,6 +164,7 @@ export function detailHtml(
     <div class="vp-chart-box"><h4>${esc(t(loc, 'browser'))}</h4><canvas id="vp-ch-browser"></canvas></div>
     <div class="vp-chart-box"><h4>${esc(t(loc, 'os'))}</h4><canvas id="vp-ch-os"></canvas></div>
     <div class="vp-chart-box"><h4>${esc(t(loc, 'country'))}</h4><canvas id="vp-ch-country"></canvas></div>
+    <div class="vp-chart-box"><h4>${esc(t(loc, 'lang'))}</h4><canvas id="vp-ch-lang"></canvas></div>
   </div>
   <script type="application/json" id="vp-chart-data">${jsonForScript({ trend, breakdown: results.breakdown })}</script>` : '';
 

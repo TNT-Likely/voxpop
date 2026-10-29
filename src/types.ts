@@ -67,6 +67,7 @@ export interface RespondDims {
   device: string;
   browser: string;
   os: string;
+  lang: string;
 }
 
 /** 后台创建问卷的已解析输入 */

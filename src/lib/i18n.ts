@@ -51,6 +51,7 @@ export const DICT: Record<string, Entry> = {
   browser: { zh: '浏览器', en: 'Browser' },
   os: { zh: '系统', en: 'OS' },
   country: { zh: '国家/地区', en: 'Country/Region' },
+  lang: { zh: '界面语言', en: 'UI language' },
   unknown: { zh: '未知', en: 'Unknown' },
   responsesLabel: { zh: '答卷', en: 'Responses' },
   pageviewsLabel: { zh: '浏览 PV', en: 'Views' },

@@ -53,7 +53,7 @@ api.post('/api/polls/:id/respond', async (c) => {
   }
 
   const body = await c.req.json<{
-    answers?: unknown; dims?: unknown; turnstileToken?: unknown; sessionId?: unknown;
+    answers?: unknown; dims?: unknown; turnstileToken?: unknown; sessionId?: unknown; lang?: unknown;
   }>().catch(() => null);
   if (!body) return c.json({ error: 'bad_request' }, 400);
 
@@ -76,11 +76,19 @@ api.post('/api/polls/:id/respond', async (c) => {
   const vh = await voterHash(c.env, poll, cookieVid, ip, ua);
 
   const dimsRaw = (body.dims ?? {}) as Record<string, unknown>;
+  // 语言维度 = 呈现给用户的问卷语言版本：页面渲染 locale 随提交回传；
+  // 缺省回退界面语言 Cookie（不使用浏览器语言——那是访客画像，不是呈现口径）
+  const pageLocale = typeof body.lang === 'string' && /^[a-z]{2}$/i.test(body.lang)
+    ? body.lang.toLowerCase()
+    : '';
+  const cookieLang = getCookie(c, 'vp_lang');
+  const lang = pageLocale || (cookieLang === 'en' || cookieLang === 'zh' ? cookieLang : '');
   const dims = {
     country: c.req.header('CF-IPCountry') ?? '',
     device: ['desktop', 'mobile', 'tablet'].includes(String(dimsRaw.device)) ? String(dimsRaw.device) : '',
     browser: cleanDim(dimsRaw.browser),
     os: cleanDim(dimsRaw.os),
+    lang,
   };
   const sessionId = typeof body.sessionId === 'string' ? body.sessionId.slice(0, 40) : '';
 

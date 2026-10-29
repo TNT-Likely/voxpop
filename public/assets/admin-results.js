@@ -57,7 +57,7 @@
     });
   }
 
-  [['device', 'vp-ch-device'], ['browser', 'vp-ch-browser'], ['os', 'vp-ch-os'], ['country', 'vp-ch-country']]
+  [['device', 'vp-ch-device'], ['browser', 'vp-ch-browser'], ['os', 'vp-ch-os'], ['country', 'vp-ch-country'], ['lang', 'vp-ch-lang']]
     .forEach(function (pair) {
       var canvas = document.getElementById(pair[1]);
       if (!canvas) return;

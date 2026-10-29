@@ -601,6 +601,7 @@
         body: JSON.stringify({
           answers: answers,
           dims: detectDims(),
+          lang: data.locale || '',
           turnstileToken: turnstileToken,
           sessionId: sessionId()
         })

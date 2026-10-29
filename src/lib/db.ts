@@ -269,19 +269,19 @@ export async function exportPollCsv(db: D1Database, pollId: string): Promise<str
     const s2 = v == null ? '' : String(v);
     return /[",\n]/.test(s2) ? '"' + s2.replace(/"/g, '""') + '"' : s2;
   };
-  const header = 'response_id,submitted_at,country,device,browser,os,question,answer';
+  const header = 'response_id,submitted_at,lang,country,device,browser,os,question,answer';
   const lines: string[] = [header];
   for (const r of (responses ?? []) as unknown as Record<string, unknown>[]) {
     const list = byResponse.get(String(r.id)) ?? [];
     if (list.length === 0) {
-      lines.push([r.id, new Date(Number(r.created_at) * 1000).toISOString(), r.country, r.device, r.browser, r.os, '(no answers)', ''].map(esc2).join(','));
+      lines.push([r.id, new Date(Number(r.created_at) * 1000).toISOString(), r.lang, r.country, r.device, r.browser, r.os, '(no answers)', ''].map(esc2).join(','));
     }
     for (const a of list) {
       const qid = String(a.question_id);
       const answer = a.option_id != null ? (labelOf.get(String(a.option_id)) ?? String(a.option_id)) : String(a.text_value ?? '');
       lines.push([
         r.id, new Date(Number(r.created_at) * 1000).toISOString(),
-        r.country, r.device, r.browser, r.os,
+        r.lang, r.country, r.device, r.browser, r.os,
         qTitle.get(qid) ?? qid, answer,
       ].map(esc2).join(','));
     }
@@ -312,9 +312,9 @@ export async function respondToPoll(
   const ts = nowSec();
   const stmts: D1PreparedStatement[] = [];
   stmts.push(db.prepare(
-    `INSERT INTO responses (id, poll_id, voter_hash, country, device, browser, os, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(responseId, poll.id, voterHash, dims.country, dims.device, dims.browser, dims.os, ts));
+    `INSERT INTO responses (id, poll_id, voter_hash, country, device, browser, os, lang, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(responseId, poll.id, voterHash, dims.country, dims.device, dims.browser, dims.os, dims.lang, ts));
   for (const a of answers) {
     for (const oid of a.optionIds ?? []) {
       stmts.push(db.prepare(
@@ -378,13 +378,13 @@ export async function buildResults(db: D1Database, poll: PollRow, includeText: b
     }
   }
 
-  const breakdown: Record<string, Record<string, number>> = { device: {}, browser: {}, os: {}, country: {} };
+  const breakdown: Record<string, Record<string, number>> = { device: {}, browser: {}, os: {}, country: {}, lang: {} };
   const { results: dimRows } = await db.prepare(
-    `SELECT device, browser, os, country, COUNT(*) AS c
-     FROM responses WHERE poll_id = ? GROUP BY device, browser, os, country`
+    `SELECT device, browser, os, country, lang, COUNT(*) AS c
+     FROM responses WHERE poll_id = ? GROUP BY device, browser, os, country, lang`
   ).bind(poll.id).all();
   for (const row of (dimRows ?? []) as unknown as Record<string, string | number>[]) {
-    for (const key of ['device', 'browser', 'os', 'country'] as const) {
+    for (const key of ['device', 'browser', 'os', 'country', 'lang'] as const) {
       const v = String(row[key] || 'unknown');
       breakdown[key][v] = (breakdown[key][v] ?? 0) + Number(row.c);
     }

@@ -6,6 +6,20 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/TNT-Likely/voxpop)
 
+**在线 Demo**：[voxpop-demo.sunxiaoyes.workers.dev](https://voxpop-demo.sunxiaoyes.workers.dev)（预置演示数据，随便投）
+
+## 预览
+
+![投票流程](.github/assets/demo.gif)
+
+| 日间 | 暗黑 |
+|---|---|
+| ![日间投票页](.github/assets/poll-light.png) | ![暗黑投票页](.github/assets/poll-dark.png) |
+
+实时结果：表单下方同步更新，投完立即可见。
+
+![实时结果](.github/assets/live-results.png)
+
 ## 特性
 
 - **四种题型**：单选 / 多选 / 级联选择（≤3 层）/ 文本输入

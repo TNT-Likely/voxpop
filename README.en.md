@@ -6,6 +6,20 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/TNT-Likely/voxpop)
 
+**Live demo**: [voxpop-demo.sunxiaoyes.workers.dev](https://voxpop-demo.sunxiaoyes.workers.dev) (seeded with sample data — vote freely)
+
+## Preview
+
+![Voting flow](.github/assets/demo.gif)
+
+| Light | Dark |
+|---|---|
+| ![Poll page, light](.github/assets/poll-light.png) | ![Poll page, dark](.github/assets/poll-dark.png) |
+
+Live results: they update right below the form as votes come in.
+
+![Live results](.github/assets/live-results.png)
+
 ## Features
 
 - **Four question types**: single choice / multiple choice / cascading select (up to 3 levels) / free text

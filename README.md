@@ -2,6 +2,8 @@
 
 > **VoxPop**（vox populi，人民之声）—— 跑在 Cloudflare 免费层上的开源投票站：5 分钟自部署、永久零成本、自带防重复提交与轻量埋点统计、一行代码嵌入任意网页。
 
+[English](README.en.md) | 中文
+
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/TNT-Likely/voxpop)
 
 ## 特性
@@ -87,24 +89,14 @@ VoxPop.mount(document.querySelector('#box'), { host: 'https://<你的域名>', p
 ```bash
 npm run dev          # http://localhost:8787
 npm run typecheck
+npm test
 ```
 
-内置能力一览：四种题型（含级联 / 文本）、四层防重、Turnstile 开关、埋点与自定义维度白名单、Cron 日聚合（events 明细 180 天保留）、后台 Chart.js 图表、JSON 导出、embed.js。
+内置能力一览：四种题型（含级联 / 文本）、四层防重、Turnstile 开关、埋点与自定义维度白名单、Cron 日聚合（events 明细 180 天保留）、后台 Chart.js 图表、JSON/CSV 导出、embed.js。
 
 ## 技术栈
 
 Cloudflare Workers（Hono + TypeScript SSR + Static Assets）· D1（SQLite）· Turnstile（可选）· 前端原生 JS，运行时依赖仅 Hono。
-
-## English
-
-**VoxPop** is an open-source, embeddable poll & survey service that runs entirely on Cloudflare's **free tier** — Workers + D1 + Turnstile, no VPS, no cost.
-
-- Four question types: single choice / multiple choice / cascading select (up to 3 levels) / free text
-- Built-in duplicate-voting protection: Turnstile → first-party cookie + HMAC fingerprint → transactional pre-check → DB unique constraint
-- Lightweight privacy-friendly analytics: PV/UV, country, device, browser, OS, custom dimensions passed from your app via URL params (whitelisted per poll)
-- Embed anywhere with one `<script>` tag (npm: `voxpop-embed`); shared-key admin UI with Chart.js dashboards; daily event rollup via Cron Triggers; MIT licensed
-
-Deploy: click the button above, or clone → `npm install` → `npx wrangler d1 create voxpop` (fill `database_id` in wrangler.jsonc) → `npx wrangler secret put ADMIN_KEY` / `SERVER_SALT` → `npm run db:remote` → `npm run deploy`. Admin UI at `/admin`. Optional Turnstile hardening in 3 steps (see above).
 
 ## License
 

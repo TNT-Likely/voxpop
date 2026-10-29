@@ -126,6 +126,11 @@ export const DICT: Record<string, Entry> = {
   crossTitle: { zh: '交叉分析（选项 × 设备）', en: 'Cross analysis (option × device)' },
   dimsTitle: { zh: '维度分布', en: 'Dimension distribution' },
   totalLabel: { zh: '合计', en: 'Total' },
+  crossLangTitle: { zh: '交叉分析（选项 × 语言）', en: 'Cross analysis (option × language)' },
+  statTotal: { zh: '总答卷', en: 'Total responses' },
+  statToday: { zh: '今日答卷', en: 'Today' },
+  statActive: { zh: '进行中问卷', en: 'Active polls' },
+  statPolls: { zh: '问卷总数', en: 'Polls' },
   enMismatch: { zh: '英文选项与中文的行数/层级不一致', en: 'English options must match the Chinese structure line by line' },
   registryTitle: { zh: '标签维护', en: 'Tag registry' },
   registryHint: {

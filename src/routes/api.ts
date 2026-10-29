@@ -22,6 +22,21 @@ api.get('/api/polls/:id/results', async (c) => {
   const poll = await getPoll(c.env.DB, c.req.param('id'));
   if (!poll || poll.status === 'draft') return c.json({ error: 'poll_not_found' }, 404);
   const closed = isClosed(poll);
+  // 实时可见或已截止的策略下结果对所有人相同 → 可安全共享缓存
+  const cacheable = poll.result_policy === 'always' || closed;
+  const cache = caches.default;
+  if (cacheable) {
+    try {
+      const hit = await cache.match(new Request(c.req.url));
+      if (hit) {
+        const res = new Response(hit.body, hit);
+        res.headers.set('X-Cache', 'HIT');
+        return res;
+      }
+    } catch {
+      // 缓存不可用时直查
+    }
+  }
   let allowed = false;
   if (poll.result_policy === 'always' || closed) {
     allowed = true;
@@ -32,8 +47,20 @@ api.get('/api/polls/:id/results', async (c) => {
     allowed = await hasResponded(c.env.DB, poll.id, await voterHash(c.env, poll, vid ?? '', ip, ua));
   }
   if (!allowed) return c.json({ error: 'results_hidden' }, 403);
-  c.header('Access-Control-Allow-Origin', '*');
-  return c.json(await buildResults(c.env.DB, poll, false));
+  const res = c.json(await buildResults(c.env.DB, poll, false), {
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      ...(cacheable ? { 'Cache-Control': 'public, max-age=60' } : {}),
+    },
+  });
+  if (cacheable) {
+    try {
+      c.executionCtx.waitUntil(cache.put(new Request(c.req.url), res.clone()));
+    } catch {
+      // 缓存写入失败不影响响应
+    }
+  }
+  return res;
 });
 
 // 提交答卷：四层防重（Turnstile → 身份 → 业务预检 → DB 唯一约束）

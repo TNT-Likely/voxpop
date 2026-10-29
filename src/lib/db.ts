@@ -158,6 +158,25 @@ export async function countRecentByCreator(db: D1Database, creatorHash: string):
   return row?.n ?? 0;
 }
 
+export interface DashboardStats { totalResponses: number; todayResponses: number; activePolls: number; totalPolls: number }
+
+/** 后台总览数字卡 */
+export async function dashboardStats(db: D1Database): Promise<DashboardStats> {
+  const today = utcDayStartSec(0);
+  const [total, todayRows, active, all] = await Promise.all([
+    db.prepare('SELECT COUNT(*) AS n FROM responses').first<{ n: number }>(),
+    db.prepare('SELECT COUNT(*) AS n FROM responses WHERE created_at >= ?').bind(today).first<{ n: number }>(),
+    db.prepare("SELECT COUNT(*) AS n FROM polls WHERE status = 'open' AND (close_at IS NULL OR close_at > ?)").bind(nowSec()).first<{ n: number }>(),
+    db.prepare('SELECT COUNT(*) AS n FROM polls').first<{ n: number }>(),
+  ]);
+  return {
+    totalResponses: total?.n ?? 0,
+    todayResponses: todayRows?.n ?? 0,
+    activePolls: active?.n ?? 0,
+    totalPolls: all?.n ?? 0,
+  };
+}
+
 export interface AppFeedPoll {
   id: string;
   title: string;
@@ -187,10 +206,10 @@ export async function listForAppFeed(db: D1Database, app: string, channel: strin
 
 export interface CrossRow { label: string; counts: Record<string, number>; total: number }
 export interface CrossQuestion { id: string; title: string; rows: CrossRow[] }
-export interface CrossAnalysis { cross: CrossQuestion[]; extraDist: Record<string, Record<string, number>> }
+export interface CrossAnalysis { cross: CrossQuestion[]; crossLang: CrossQuestion[]; extraDist: Record<string, Record<string, number>> }
 
-/** 交叉分析：选项 × 设备 + 自定义维度（extra JSON）分布 */
-export async function getCrossAnalysis(db: D1Database, poll: PollRow): Promise<CrossAnalysis> {
+/** 交叉分析：选项 × 设备 / 选项 × 语言 + 自定义维度（extra JSON）分布 */
+export async function getCrossAnalysis(db: D1Database, poll: PollRow, locale = 'zh'): Promise<CrossAnalysis> {
   const questions = await getQuestions(db, poll.id);
   const optionsMap = await getOptionsByQuestionIds(db, questions.map((q) => q.id));
   const choice = questions.filter((q) => q.type !== 'text');
@@ -209,21 +228,38 @@ export async function getCrossAnalysis(db: D1Database, poll: PollRow): Promise<C
     qm.set(row.oid, dm);
     perQ.set(row.qid, qm);
   }
-  const cross: CrossQuestion[] = choice.map((q) => {
+  const perQLang = new Map<string, Map<string, Map<string, number>>>();
+  const { results: langRows } = await db.prepare(
+    `SELECT a.question_id AS qid, a.option_id AS oid, r.lang AS lang, COUNT(*) AS c
+     FROM answers a JOIN responses r ON r.id = a.response_id
+     WHERE r.poll_id = ? AND a.option_id IS NOT NULL
+     GROUP BY a.question_id, a.option_id, r.lang`
+  ).bind(poll.id).all();
+  for (const row of (langRows ?? []) as unknown as { qid: string; oid: string; lang: string; c: number }[]) {
+    const qm = perQLang.get(row.qid) ?? new Map();
+    const lm = qm.get(row.oid) ?? new Map();
+    const key = row.lang || 'unknown';
+    lm.set(key, (lm.get(key) ?? 0) + row.c);
+    qm.set(row.oid, lm);
+    perQLang.set(row.qid, qm);
+  }
+  const crossRows = (qm: Map<string, Map<string, Map<string, number>>>) => choice.map((q) => {
     const opts = optionsMap.get(q.id) ?? [];
-    const qm = perQ.get(q.id) ?? new Map();
+    const qm2 = qm.get(q.id) ?? new Map();
     const rows: CrossRow[] = opts.map((o) => {
-      const dm = qm.get(o.id) ?? new Map();
+      const dm = qm2.get(o.id) ?? new Map();
       let total = 0;
       const counts: Record<string, number> = {};
       for (const [d, c] of dm) {
         counts[d] = c;
         total += c;
       }
-      return { label: o.label, counts, total };
+      return { label: pick(locale, o.label, o.label_en), counts, total };
     }).filter((r) => r.total > 0);
-    return { id: q.id, title: q.title, rows };
+    return { id: q.id, title: pick(locale, q.title, q.title_en), rows };
   }).filter((x) => x.rows.length);
+  const cross = crossRows(perQ);
+  const crossLang = crossRows(perQLang);
 
   const extraDist: Record<string, Record<string, number>> = {};
   const { results: extraRows } = await db.prepare(
@@ -240,7 +276,7 @@ export async function getCrossAnalysis(db: D1Database, poll: PollRow): Promise<C
       // 跳过非法 JSON
     }
   }
-  return { cross, extraDist };
+  return { cross, crossLang, extraDist };
 }
 
 /** CSV 导出：答卷长表（一行一答案），UTF-8 BOM 便于 Excel 直接打开 */

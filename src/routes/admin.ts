@@ -8,9 +8,9 @@ import { t } from '../lib/i18n';
 import { parsePollInput } from '../lib/parse';
 import { runDailyRollup } from '../lib/cron';
 import {
-  addRegistry, adminListPolls, buildResults, createPoll, deletePoll, deleteRegistry, exportPoll,
-  exportPollCsv, getCrossAnalysis, getDailySeries, getPoll, getPollPageviews, listRegistry,
-  registryNameMaps, setPollApps, setPollChannels, setPollStatus, setPollTitleEn,
+  addRegistry, adminListPolls, buildResults, createPoll, dashboardStats, deletePoll, deleteRegistry,
+  exportPoll, exportPollCsv, getCrossAnalysis, getDailySeries, getPoll, getPollPageviews,
+  listRegistry, registryNameMaps, setPollApps, setPollChannels, setPollStatus, setPollTitleEn,
   setPollVisibility, setPollAccent,
 } from '../lib/db';
 import { localeOf, newPollFormBody } from './pages';
@@ -43,8 +43,8 @@ admin.get('/admin', async (c) => {
   if (!(await isAdmin(c))) {
     return c.html(layout({ title: `${t(loc, 'adminTitle')} · 众声 VoxPop`, body: loginFormRaw(loc, ''), locale: loc, path: c.req.path }));
   }
-  const polls = await adminListPolls(c.env.DB);
-  return c.html(layout({ title: `${t(loc, 'adminTitle')} · 众声 VoxPop`, body: dashboardHtml(loc, polls), locale: loc, path: c.req.path }));
+  const [polls, stats] = await Promise.all([adminListPolls(c.env.DB), dashboardStats(c.env.DB)]);
+  return c.html(layout({ title: `${t(loc, 'adminTitle')} · 众声 VoxPop`, body: dashboardHtml(loc, polls, stats), locale: loc, path: c.req.path }));
 });
 
 admin.post('/admin/login', async (c) => {

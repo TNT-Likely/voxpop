@@ -2,7 +2,7 @@
 import type { Env, PollRow } from '../types';
 import { esc, fmtDate, isClosed, jsonForScript } from '../lib/util';
 import { t } from '../lib/i18n';
-import type { CrossAnalysis, DailyPoint, RegistryEntry, ResultsPayload } from '../lib/db';
+import type { CrossAnalysis, CrossQuestion, DailyPoint, RegistryEntry, ResultsPayload } from '../lib/db';
 
 export function sanitizeTags(input: string): string {
   return input
@@ -52,7 +52,11 @@ export function registryHtml(loc: Parameters<typeof t>[0], apps: RegistryEntry[]
   </div>`;
 }
 
-export function dashboardHtml(loc: Parameters<typeof t>[0], polls: (PollRow & { response_count: number })[]): string {
+export function dashboardHtml(
+  loc: Parameters<typeof t>[0],
+  polls: (PollRow & { response_count: number })[],
+  stats: { totalResponses: number; todayResponses: number; activePolls: number; totalPolls: number }
+): string {
   const rows = polls.map((p) => {
     const closed = isClosed(p);
     const badge = p.status === 'closed' ? t(loc, 'statusClosed') : closed ? t(loc, 'statusExpired') : t(loc, 'statusOpen');
@@ -84,7 +88,13 @@ export function dashboardHtml(loc: Parameters<typeof t>[0], polls: (PollRow & { 
     </div>
   </div>
   ${polls.length
-    ? `<div class="vp-table-wrap"><table class="vp-table"><thead><tr><th>${esc(t(loc, 'thTitle'))}</th><th>ID</th><th>${esc(t(loc, 'thStatus'))}</th><th>${esc(t(loc, 'thResponses'))}</th><th>${esc(t(loc, 'thCreated'))}</th><th>${esc(t(loc, 'thActions'))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    ? `<div class="vp-stat-row">
+        <div class="vp-stat"><b>${stats.totalResponses}</b><span>${esc(t(loc, 'statTotal'))}</span></div>
+        <div class="vp-stat"><b>${stats.todayResponses}</b><span>${esc(t(loc, 'statToday'))}</span></div>
+        <div class="vp-stat"><b>${stats.activePolls}</b><span>${esc(t(loc, 'statActive'))}</span></div>
+        <div class="vp-stat"><b>${stats.totalPolls}</b><span>${esc(t(loc, 'statPolls'))}</span></div>
+      </div>
+      <div class="vp-table-wrap"><table class="vp-table"><thead><tr><th>${esc(t(loc, 'thTitle'))}</th><th>ID</th><th>${esc(t(loc, 'thStatus'))}</th><th>${esc(t(loc, 'thResponses'))}</th><th>${esc(t(loc, 'thCreated'))}</th><th>${esc(t(loc, 'thActions'))}</th></tr></thead><tbody>${rows}</tbody></table></div>`
     : `<p class="vp-empty">${esc(t(loc, 'noPolls'))}</p>`}`;
 }
 
@@ -221,21 +231,26 @@ export function detailHtml(
 }
 
 function crossSection(loc: Parameters<typeof t>[0], data: CrossAnalysis): string {
-  const hasCross = data.cross.length > 0;
-  const extraKeys = Object.keys(data.extraDist);
-  if (!hasCross && extraKeys.length === 0) return '';
-  let html = `<h2 class="vp-section">${esc(t(loc, 'crossTitle'))}</h2>`;
-  for (const q of data.cross) {
+  const hasAny = data.cross.length > 0 || data.crossLang.length > 0 || Object.keys(data.extraDist).length > 0;
+  if (!hasAny) return '';
+  const table = (title: string, q: CrossQuestion) => {
     const devices = Array.from(new Set(q.rows.flatMap((r) => Object.keys(r.counts))));
-    html += `<section class="vp-admin-q"><h3>${esc(q.title)}</h3><div class="vp-table-wrap"><table class="vp-table" style="min-width:0"><thead><tr><th> </th>${devices.map((d) => `<th>${esc(d || t(loc, 'unknown'))}</th>`).join('')}<th>${esc(t(loc, 'totalLabel'))}</th></tr></thead><tbody>`;
+    let h = `<section class="vp-admin-q"><h3>${esc(q.title)} <small class="vp-chip">${esc(title)}</small></h3><div class="vp-table-wrap"><table class="vp-table" style="min-width:0"><thead><tr><th> </th>${devices.map((d) => `<th>${esc(d || t(loc, 'unknown'))}</th>`).join('')}<th>${esc(t(loc, 'totalLabel'))}</th></tr></thead><tbody>`;
     for (const r of q.rows) {
-      html += `<tr><td>${esc(r.label)}</td>${devices.map((d) => `<td>${r.counts[d] ?? 0}</td>`).join('')}<td><b>${r.total}</b></td></tr>`;
+      h += `<tr><td>${esc(r.label)}</td>${devices.map((d) => `<td>${r.counts[d] ?? 0}</td>`).join('')}<td><b>${r.total}</b></td></tr>`;
     }
-    html += '</tbody></table></div></section>';
+    return h + '</tbody></table></div></section>';
+  };
+  let html = '';
+  if (data.cross.length > 0) {
+    html += `<h2 class="vp-section">${esc(t(loc, 'crossTitle'))}</h2>` + data.cross.map((q) => table(t(loc, 'device'), q)).join('');
   }
-  if (extraKeys.length > 0) {
+  if (data.crossLang.length > 0) {
+    html += `<h2 class="vp-section">${esc(t(loc, 'crossLangTitle'))}</h2>` + data.crossLang.map((q) => table(t(loc, 'lang'), q)).join('');
+  }
+  if (Object.keys(data.extraDist).length > 0) {
     html += `<h2 class="vp-section">${esc(t(loc, 'dimsTitle'))}</h2>`;
-    for (const key of extraKeys) {
+    for (const key of Object.keys(data.extraDist)) {
       const entries = Object.entries(data.extraDist[key]).sort((a, b) => b[1] - a[1]).slice(0, 12);
       html += `<div class="vp-bd"><h4>${esc(key)}</h4>${entries
         .map(([v, n]) => `<span class="vp-chip">${esc(v)} · ${n}</span>`)

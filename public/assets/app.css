@@ -54,7 +54,13 @@ body {
   font-size: 14px;
   line-height: 1.6;
   transition: background-color .2s ease, color .2s ease;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
+main { flex: 1 0 auto; }
+footer { flex: none; }
+header { flex: none; }
 a { color: inherit; text-decoration: none; }
 a:hover { text-decoration: underline; }
 code {
@@ -74,7 +80,7 @@ code {
   padding: 10px 17px;
 }
 .vp-header-in {
-  max-width: 780px; margin: 0 auto;
+  max-width: 1000px; margin: 0 auto;
   display: flex; align-items: center; gap: 10px;
 }
 .vp-logo { font-size: 20px; font-weight: 650; letter-spacing: -.3px; display: inline-flex; align-items: center; gap: 6px; }
@@ -114,7 +120,7 @@ code {
 }
 
 /* ---------- 主区 ---------- */
-.vp-main { max-width: 780px; margin: 0 auto; padding: 18px 17px 56px; }
+.vp-main { max-width: 1000px; margin: 0 auto; padding: 18px 17px 56px; }
 .vp-main.vp-embed { padding: 10px 4px 16px; max-width: 640px; }
 
 /* ---------- 页脚（纸面圆角底板；品牌 + GitHub，桌面双栏 / 移动居中堆叠） ---------- */
@@ -124,7 +130,7 @@ code {
   margin-top: 44px;
   padding: 22px 17px calc(30px + env(safe-area-inset-bottom));
 }
-.vp-footer-in { max-width: 780px; margin: 0 auto; display: grid; gap: 10px; justify-items: center; }
+.vp-footer-in { max-width: 1000px; margin: 0 auto; display: grid; gap: 10px; justify-items: center; }
 .vp-footer-brand { font-size: 15px; font-weight: 650; display: flex; align-items: center; justify-content: center; gap: 8px; }
 .vp-footer-gh {
   color: var(--bc-muted); display: inline-flex; align-items: center;
@@ -315,7 +321,7 @@ form.inline { display: inline-block; margin: 0; }
   border-top: 1px solid var(--bc-line); margin-top: 36px;
   padding: 26px 17px 46px;
 }
-.vp-footer-in { max-width: 780px; margin: 0 auto; text-align: center; }
+.vp-footer-in { max-width: 1000px; margin: 0 auto; text-align: center; }
 .vp-footer-brand { font-size: 15px; font-weight: 650; display: flex; align-items: center; justify-content: center; gap: 6px; }
 .vp-footer-privacy { color: var(--bc-muted); font-size: 12px; margin: 8px 0 12px; }
 .vp-footer-links { display: flex; justify-content: center; gap: 16px; font-size: 12px; color: var(--bc-muted); }
